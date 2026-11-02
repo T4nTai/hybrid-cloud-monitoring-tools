@@ -1,0 +1,22 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Secrets
+docker/.env
+configs/variables.env
+
+# Data
+data/raw/*
+!data/raw/.gitkeep
+analysis/output/*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

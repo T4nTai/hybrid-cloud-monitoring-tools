@@ -1,0 +1,28 @@
+# =============================================================================
+# AWS Configuration Template
+# Copy this file to terraform.tfvars and fill in your values
+# =============================================================================
+
+# AWS region — Singapore for low latency to Southeast Asia
+aws_region = "ap-southeast-1"
+
+# VM size — t3.small (2 vCPU, 2GB RAM) for Telegraf agent + benchmarks
+agent_vm_size = "t3.small"
+
+# SSH key name (must exist in AWS region)
+# Create key pair in AWS Console or via: aws ec2 create-key-pair --key-name hybrid-monitoring
+ssh_key_name = "your-key-name"
+
+# IP addresses allowed to SSH (your public IP)
+# Find yours at: curl ifconfig.me
+# Format: ["1.2.3.4/32", "5.6.7.8/32"]
+ssh_allowed_cidrs = ["0.0.0.0/0"]
+
+# Azure Central VM IP (for security group rules)
+# Fill this after Azure deployment completes
+azure_central_ip = ""
+
+# Project metadata
+project_name = "hybrid-cloud-monitoring"
+environment  = "production"
+owner        = "NT531"

@@ -1,0 +1,28 @@
+# =============================================================================
+# Azure Configuration Template
+# Copy this file to terraform.tfvars and fill in your values
+# =============================================================================
+
+# Azure region — use japaneast (Tokyo) for better VM capacity
+# Allowed regions per subscription policy: indiasouthcentral, uaenorth, eastasia, japaneast, indonesiacentral
+azure_region = "japaneast"
+
+# VM size — Standard_B2s (2 vCPU, 4GB) recommended for InfluxDB + Chronograf
+# Standard_B1s often has capacity issues
+central_vm_size = "Standard_B2s"
+
+# Admin username for SSH
+admin_username = "azureuser"
+
+# SSH public key path
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# IP addresses allowed to SSH and access InfluxDB/Chronograf
+# Find yours at: curl ifconfig.me
+# Format: ["1.2.3.4/32", "5.6.7.8/32"]
+allowed_ssh_cidrs = ["0.0.0.0/0"]
+
+# Project metadata
+project_name = "hybrid-cloud-monitoring"
+environment  = "production"
+owner        = "NT531"
