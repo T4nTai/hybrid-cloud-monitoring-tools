@@ -57,7 +57,7 @@ module "central" {
   subnet_id           = azurerm_subnet.central.id
   vm_size             = var.central_vm_size
   admin_username      = var.admin_username
-  ssh_public_key      = file(pathexpand(var.ssh_public_key_path))
+  ssh_public_key      = file("${path.module}/../keys/azure-central-key.pub")
 
   # NSG rules cho Central
   nsg_rules = [

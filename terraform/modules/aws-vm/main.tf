@@ -64,6 +64,15 @@ resource "aws_security_group" "this" {
     cidr_blocks = length(var.allowed_ssh_cidrs) > 0 ? var.allowed_ssh_cidrs : ["0.0.0.0/0"]
   }
 
+  # WireGuard VPN
+  ingress {
+    description = "WireGuard VPN"
+    from_port   = 51820
+    to_port     = 51820
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # Them rule tuy chon (8086 InfluxDB, 8888 Chronograf, 5201 iperf3, 80 nginx...)
   dynamic "ingress" {
     for_each = var.allowed_ingress_rules
