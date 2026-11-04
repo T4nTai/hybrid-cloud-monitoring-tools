@@ -19,8 +19,10 @@ analysis/output/*
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .pytest_cache/
 
 # WireGuard client config (chứa private key)
-terraform/keys/*.conf
-terraform/keys/*wireguard*
+terraform/keys/
+/data
+data/experiment-log.md

@@ -1,5 +1,5 @@
 # KẾ HOẠCH DỰ ÁN
-## Đánh giá hiệu năng mạng trong Hybrid Cloud (AWS + Azure) sử dụng TICK Stack
+## Đánh giá hiệu năng mạng trong mô hình Hybrid Cloud (On-premise + AWS + Azure) sử dụng TICK Stack
 
 **Môn học:** Đánh giá hiệu năng mạng
 **Đề tài:** Hybrid Cloud Monitoring Tools
@@ -12,49 +12,52 @@
 ### 1.1 Mục tiêu
 Xây dựng hệ thống giám sát (monitoring) trên nền tảng hybrid cloud AWS + Azure, đồng thời **sử dụng chính hệ thống đó để đo lường hiệu năng mạng** và trả lời các câu hỏi:
 
-1. Hiệu năng mạng giữa 2 cloud provider khác nhau như thế nào so với trong cùng 1 cloud?
+1. Hiệu năng mạng giữa **on-premise, AWS và Azure** khác nhau như thế nào (hybrid/VPN vs cross-cloud qua Internet)?
 2. Khoảng cách vật lý ảnh hưởng thế nào đến độ trễ (latency)?
 3. Bản thân hệ thống monitoring gây ra overhead bao nhiêu lên workload đang chạy?
-4. Hiệu năng compute (CPU/RAM/Disk) của AWS và Azure có khác nhau không khi dùng cùng cấu hình?
+4. Hiệu năng compute (CPU/RAM/Disk) của **on-prem, AWS và Azure** khác nhau thế nào khi dùng cấu hình tương đương?
 
 ### 1.2 Phạm vi
 
 | | Bao gồm | Không bao gồm |
 |---|---|---|
-| **Cloud** | AWS (ap-southeast-1 Singapore, ap-northeast-1 Tokyo, us-east-1), Azure (southeastasia, eastus) | GCP, OCI, on-premise |
+| **Cloud** | On-premise (TP.HCM, Việt Nam), AWS (ap-southeast-1 Singapore; probe ap-northeast-1 Tokyo, ap-southeast-2 Sydney, us-east-1, eu-central-1), Azure (eastasia Hong Kong) | GCP, OCI |
 | **Chỉ số** | Latency (RTT, p50/p95/p99), Packet loss, Jitter, Throughput, Route quality | APM, Log analytics, Tracing |
 | **Công cụ** | TICK Stack (thu thập & lưu) + sysbench/fio/iperf3/ab/mtr (đo lường) | Kafka, Mimir, Loki, Kubernetes |
-| **Quy mô** | 3 VM (1 AWS + 1 Azure + 1 Central) + 2 VM phụ đo khoảng cách | Kiến trúc HA, multi-region failover |
+| **Quy mô** | 3 VM chính (1 on-prem + 1 AWS + 1 Azure Central) + 4 probe nhỏ cho TN2 (bật/tắt theo nhu cầu) | Kiến trúc HA, multi-region failover |
 
 ---
 
 ## 2. KIẾN TRÚC HỆ THỐNG
 
 ```
-┌─── AWS ap-southeast-1 (Singapore) ──────────────────────┐
-│  VM-A (t3.small)                                          │
-│  ├─ Telegraf Agent ──► OS metrics + ping + net_response  │
-│  └─ sysbench / fio / nginx  (phục vụ benchmark)           │
-└────────────────────────┬──────────────────────────────────┘
-                         │ HTTP :8086
-┌─── AWS us-east-1 ───────┼───────────────────────────────┐
-│  VM-C (t3.small)  ──────┤  (đo ảnh hưởng khoảng cách)     │
-└────────────────────────┤                                │
-                         │                                │
-┌─── Azure southeastasia ─┼─────────────────────────────┐  │
-│  VM-B (Standard_B2s) ───┤  Telegraf + benchmark tools   │  │
-└────────────────────────┤                                │
-                         ▼                                │
-┌───────────────── Central VM (AWS ap-southeast-1) ──────┐ │
-│  Docker Compose:                                         │ │
-│  ├─ InfluxDB   :8086   (lưu time-series)                │ │
-│  ├─ Chronograf :8888   (dashboard)                      │ │
-│  ├─ iperf3 server :5201 (đo throughput)                 │ │
-│  └─ nginx :80          (server cho Apache Bench)        │ │
-└──────────────────────────────────────────────────────────┘
+┌─── On-premise TP.HCM (Việt Nam) ───────────────────────┐
+│  Host KVM (WireGuard client 10.200.200.2)               │
+│  └─ VM-A (Ubuntu 22.04, 192.168.122.146)                │
+│     ├─ Telegraf Agent (host=vm-a) ──► OS metrics + ping │
+│     └─ sysbench / fio / nginx (benchmark)               │
+└────────────────────────┬────────────────────────────────┘
+                         │ WireGuard UDP 51820 — 10.200.200.0/24
+┌─── AWS ap-southeast-1 (Singapore) ─────────────────────┐
+│  VM-B (t3.small)                                        │
+│  ├─ Telegraf Agent (host=vm-b)                          │
+│  ├─ iperf3 server :5201                                 │
+│  └─ nginx :80 (Apache Bench)                            │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTP :8086 (public internet)
+┌─── Azure eastasia (Hong Kong) ─────────────────────────┐
+│  Central VM (Standard_B2s_v2) — Neutral Observer        │
+│  Docker Compose:                                        │
+│  ├─ InfluxDB   :8086   (lưu time-series)                │
+│  └─ Chronograf :8888   (dashboard)                      │
+└─────────────────────────────────────────────────────────┘
+
+TN2 probes (chỉ bật khi đo khoảng cách, tắt sau khi xong):
+  AWS ap-northeast-1 Tokyo | ap-southeast-2 Sydney
+  AWS us-east-1 Virginia   | eu-central-1 Frankfurt
 ```
 
-### 2.1 Luồng hoạt động (chu kỳ 15 giây, lặp liên tục)
+### 2.1 Luồng hoạt động (chu kỳ 10 giây, lặp liên tục)
 
 ```
  Telegraf trên mỗi VM          InfluxDB              Chronograf
@@ -63,13 +66,13 @@ Xây dựng hệ thống giám sát (monitoring) trên nền tảng hybrid cloud
  │ ping (20 gói)   │────────►│ lưu điểm │◄────────│ biểu đồ    │
  │ net_response    │  HTTP   │ dữ liệu  │ InfluxQL│            │
  │ http_response   │  :8086  │          │         │ So sánh    │
- └──────────────────┘         └──────────┘         │ 5 VM       │
+ └──────────────────┘         └──────────┘         │ điểm đo    │
                                                       └────────────┘
 ```
 
 **Ba nguồn dữ liệu được hệ thống ghi nhận:**
 1. **Agent metrics** — đo trực tiếp trên VM (CPU, RAM, Disk, Network)
-2. **Network probes** — Telegraf `inputs.ping` phát 20 gói ICMP mỗi 15s, tự tính RTT/loss/jitter/p50-p95-p99
+2. **Network probes** — Telegraf `inputs.ping` phát 20 gói ICMP mỗi 10s, tự tính RTT/loss/jitter/p50-p95-p99
 3. **Cloud native** — Telegraf Central gọi API CloudWatch & Azure Monitor lấy metrics ở góc nhìn của từng provider
 
 ---
@@ -115,33 +118,34 @@ Xây dựng hệ thống giám sát (monitoring) trên nền tảng hybrid cloud
 
 ### 4.1 Danh sách VM
 
-| VM | Cloud / Region | Spec | Hệ điều hành | Vai trò | Chi phí |
+| VM | Vị trí | Spec | Hệ điều hành | Vai trò | Chi phí |
 |---|---|---|---|---|---|
-| VM-A | AWS ap-southeast-1 | t3.small | Ubuntu 22.04 | Agent + benchmark | ~$15/tháng |
-| VM-B | Azure southeastasia | Standard_B2s | Ubuntu 22.04 | Agent + benchmark | ~$30/tháng |
-| VM-C | AWS us-east-1 | t3.small | Ubuntu 22.04 | Đo khoảng cách xa | ~$15/tháng |
-| VM-D | AWS ap-northeast-1 | t3.small | Ubuntu 22.04 | Đo khoảng cách xa | ~$15/tháng |
-| Central | AWS ap-southeast-1 | t3.small | Ubuntu 22.04 | TICK + iperf3 + nginx | ~$15/tháng |
+| VM-A | **On-prem TP.HCM** (KVM guest) | 2 vCPU / RAM tùy host | Ubuntu 22.04 | Agent + benchmark | $0 |
+| VM-B | AWS ap-southeast-1 (Singapore) | t3.small (2 vCPU, 2 GB) | Ubuntu 22.04 | Agent + iperf3 + nginx | ~$15/tháng |
+| Central | Azure eastasia (Hong Kong) | Standard_B2s_v2 (2 vCPU, 8 GB) | Ubuntu 22.04 | TICK — neutral observer | ~$30/tháng |
+| Probe TN2 ×4 | AWS Tokyo / Sydney / Virginia / Frankfurt | t3.micro | Ubuntu 22.04 | Đo khoảng cách (chỉ bật khi đo) | ~$0.05/giờ |
 
-> **Tắt VM-C, VM-D khi không chạy thí nghiệm** để tiết kiệm. Chạy 8h/ngày trong 1 tuần đo → chi phí thực ~$25-30.
+> **Tắt 4 probe TN2 ngay sau khi đo** để tiết kiệm. Chúng chỉ phục vụ TN2 (khoảng cách – latency), không tham gia monitoring thường xuyên.
 
 ### 4.2 Cảnh báo về tính công bằng của phép so sánh (rất quan trọng)
 
 Hai dòng VM giống nhau về "số vCPU" **không có cùng hiệu năng thực tế**:
 
-| | AWS t3.small | Azure B2s |
-|---|---|---|
-| vCPU | 2 | 2 |
-| Baseline CPU performance | **20%** (burstable) | **100%** (không giới hạn) |
-| Cơ chế | AWS Credits — vượt 20% sẽ bị throttle | Không giới hạn |
-| Bộ nhớ | 2 GB | 4 GB |
+| | AWS t3.small | Azure B2s_v2 | On-prem VM-A |
+|---|---|---|---|
+| vCPU | 2 | 2 | tùy host |
+| Baseline CPU | **20%/vCPU** (burstable, tổng ~40%) | **burstable credit-based** (~40%/vCPU) | Không giới hạn (tùy host) |
+| Cơ chế | AWS Credits — hết credit sẽ throttle | Azure Credits — hết credit sẽ throttle | Không |
+| Bộ nhớ | 2 GB | 8 GB | tùy host |
 
 **→ Bắt buộc phải nêu điểm này trong báo cáo**, nếu không kết luận "Azure nhanh hơn AWS gấp 5 lần" sẽ bị coi là kết luận sai.
 
-**Cách xử lý:**
-- Dùng **AWS t3.medium (40% baseline)** hoặc so sánh ở mức tải dưới ngưỡng burst
-- Hoặc chấp nhận hạn chế và ghi rõ: *kết quả phản ánh hiệu năng của gói burstable cụ thể, không đại diện cho toàn bộ dòng VM của provider*
-- Luôn chạy benchmark **3 lần, lấy trung bình**, kết hợp thời điểm chạy giống nhau
+**Cách xử lý (áp dụng cho TN4):**
+- **Theo dõi credit trước/sau mỗi lần đo**: `CPUCreditBalance` (CloudWatch) và CPU credits (Azure Monitor). Ghi lại trong nhật ký.
+- Chạy khi credit còn dồi dào, hoặc chấp nhận và ghi rõ: *kết quả phản ánh gói burstable cụ thể, không đại diện toàn dòng VM*.
+- **Tắt Docker (InfluxDB + Chronograf) trên Central** trong lúc benchmark TN4 để tránh tranh CPU/disk, sau đó bật lại.
+- Luôn chạy benchmark **3 lần, lấy trung bình + độ lệch chuẩn**, cùng khung giờ.
+- On-prem VM-A đo cùng thời điểm để làm mốc "không bị giới hạn credit".
 
 ### 4.3 Phần mềm cài đặt
 
@@ -227,7 +231,7 @@ docker-compose ps
 **File `/etc/telegraf/telegraf.conf` — dùng chung, chỉ khác phần `urls`:**
 ```toml
 [agent]
-  interval = "15s"
+  interval = "10s"
   round_interval = true
   metric_batch_size = 1000
   metric_buffer_limit = 10000
@@ -257,7 +261,7 @@ docker-compose ps
 [[inputs.ping]]
   urls = ["<IP-VM-B>", "<CENTRAL-IP>"]
   count = 20
-  interval = "15s"
+  interval = "10s"
   ping_interval = "0.2"
   method = "native"
   percentile = [50, 95, 99]
@@ -268,13 +272,13 @@ docker-compose ps
   address = "<IP-VM-B>:80"
   timeout = "5s"
   read_timeout = "5s"
-  interval = "15s"
+  interval = "10s"
 
 [[inputs.http_response]]
   urls = ["http://<IP-VM-B>/"]
   method = "GET"
   response_timeout = "5s"
-  interval = "15s"
+  interval = "10s"
 
 [[inputs.internal_write]]
 [[inputs.statsd]]
@@ -291,12 +295,12 @@ sudo journalctl -u telegraf -f | head -50
 
 **Bảng khai báo target cho từng VM:**
 
-| VM | `hostname` | `urls` (ping) | `address` (net_response) |
+| VM | `hostname` | `urls` (ping) | Ghi chú |
 |---|---|---|---|
-| VM-A (AWS SG) | `vm-a` | IP-B, Central-IP | IP-B:80 |
-| VM-B (Azure SEA) | `vm-b` | IP-A, IP-C, IP-D | IP-A:80 |
-| VM-C (AWS Tokyo) | `vm-c` | IP-B, IP-A | IP-B:80 |
-| VM-D (AWS US-East) | `vm-d` | IP-B, IP-A | IP-B:80 |
+| VM-A (on-prem TP.HCM) | `vm-a` | `10.200.200.1` (VPN), `52.175.59.167` (Azure), `8.8.8.8` | Đo cả đường VPN và Internet |
+| VM-B (AWS SG) | `vm-b` | `52.175.59.167` (Azure), `8.8.8.8`, `1.1.1.1` | Đo cross-cloud AWS↔Azure |
+| Central (Azure HK) | — | — | Không chạy Telegraf agent (chỉ TICK) |
+| Probe TN2 (×4) | `probe-*` | IP VM-B, IP Central | Chỉ chạy ping trong lúc đo TN2 |
 
 ### 5.3 Telegraf Central — lấy metrics native từ CloudWatch & Azure Monitor
 
@@ -380,66 +384,73 @@ az ad sp create-for-rbac \
 
 | Mã | Tên thí nghiệm | Biến số | Công cụ đo | Chỉ số |
 |---|---|---|---|---|
-| **TN1** | Cross-cloud vs Intra-cloud | Đường đi giữa các cặp VM | Telegraf ping, iperf3, mtr | RTT, loss, jitter, throughput |
-| **TN2** | Ảnh hưởng khoảng cách vật lý | Khoảng cách (0 → 15.000 km) | Telegraf ping, mtr | RTT, hiệu suất truyền dẫn |
-| **TN3** | Overhead của agent monitoring | Telegraf tắt / bật (interval 5s–30s) | ab, iperf3, Telegraf | requests/s, RTT, bytes_sent |
-| **TN4** | So sánh hiệu năng compute 2 cloud | Cloud provider | sysbench, fio | ops/s, MB/s, IOPS, latency |
+| **TN1** | Hybrid vs cross-cloud network | Đường đi: on-prem↔AWS (VPN), on-prem↔Azure (Internet), AWS↔Azure (Internet) | Telegraf ping, iperf3, mtr | RTT, loss, jitter, throughput, hop |
+| **TN2** | Ảnh hưởng khoảng cách vật lý | Khoảng cách (TP.HCM/SG → 0–15.400 km) | Telegraf ping, mtr, probe VM | RTT, hiệu suất truyền dẫn |
+| **TN3** | Overhead của agent monitoring | Telegraf tắt / bật (interval 5s–30s) | ab, iperf3, Telegraf | requests/s, RTT, bytes_sent, CPU% |
+| **TN4** | So sánh compute on-prem / AWS / Azure | Provider | sysbench, fio | ops/s, MB/s, IOPS, latency |
 
 > Các phép đo liên quan đến tinh chỉnh **tần suất lấy mẫu của monitoring** chỉ được thực hiện như **biến phụ trong TN3**, không tách thành thí nghiệm riêng — vì bản chất nó là đo *overhead*, thuộc phạm vi đánh giá hiệu năng.
 
 ---
 
-### TN1 — Hiệu năng mạng: Cross-cloud so với Intra-cloud
+### TN1 — Hiệu năng mạng: Hybrid (VPN) vs Cross-cloud (Internet)
 
-**Giả thuyết:** Đường đi xuyên giữa 2 cloud provider (AWS ↔ Azure) có độ trễ cao hơn và mất gói nhiều hơn so với đường đi trong cùng 1 provider, dù khoảng cách vật lý tương đương.
+**Giả thuyết:** Đường hybrid on-prem↔AWS qua WireGuard có RTT và loss thấp; đường cross-cloud AWS↔Azure qua Internet có RTT cao hơn; đường on-prem↔Azure chịu ảnh hưởng chất lượng tuyến Internet quốc tế (loss cao hơn).
 
-**Bảng thiết kế:**
+**Bảng thiết kế (mô hình thực tế 3 điểm):**
 
-| Mã đường đo | Đường đi | Loại | Khoảng cách (km) |
+| Mã | Đường đi | Loại | Khoảng cách ước tính |
 |---|---|---|---|
-| D1 | VM-A (AWS SG) → VM-B (Azure SEA) | Cross-cloud | ~0 (cùng thành phố) |
-| D2 | VM-A (AWS SG) → VM-C (AWS Tokyo) | Intra-cloud, khác region | ~5.300 |
-| D3 | VM-A (AWS SG) → VM-D (AWS US-East) | Intra-cloud, khác continent | ~15.400 |
-| D4 | Central → VM-B (Azure SEA) | Cross-cloud, qua Internet | ~0 |
+| **P1** | VM-A (on-prem TP.HCM) ↔ VM-B (AWS Singapore) qua **WireGuard** | Hybrid / VPN | ~1.100 km |
+| **P2** | VM-A (on-prem TP.HCM) ↔ Central (Azure Hong Kong) qua Internet | Hybrid / Internet | ~1.500 km |
+| **P3** | VM-B (AWS Singapore) ↔ Central (Azure Hong Kong) qua Internet | Cross-cloud | ~2.600 km |
+| **P4** | VM-A → VM-B **public IP** (18.139.136.124), cùng path không VPN | Baseline VPN overhead | ~1.100 km |
+| **P0** | Loopback `127.0.0.1` mỗi máy | Baseline | 0 |
 
 **Cách chạy:**
 ```bash
-# Telegraf đang chạy liên tục trên cả 5 VM — để tự thu thập dữ liệu 30-60 phút
+# 1) Telegraf ping liên tục (đã cấu hình) — thu 10–15 phút mỗi đường
 
-# Bổ sung đo throughput bằng iperf3 (chạy thủ công, 3 lần mỗi cặp)
-# Trên Central: iperf3 -s          (server)
-# Trên VM đích: iperf3 -c <CENTRAL-IP> -t 60 -i 1
+# 2) mtr — 3 lần mỗi đường, đo số hop
+mtr -rwc 100 10.200.200.1        # P1 (qua VPN)
+mtr -rwc 100 52.175.59.167       # P3 (AWS -> Azure)
+mtr -rwc 100 18.139.136.124      # P4 (public path)
 
-# Bổ sung đo route bằng mtr (3 lần mỗi cặp)
-mtr -rwc 100 <IP-ĐÍCH>
-mtr -rwc 100 -T <IP-ĐÍCH>       # dùng TCP port 80
+# 3) iperf3 — 3 lần mỗi cặp, 30s
+#    Server VM-B: iperf3 -s -4
+#    Client VM-A: iperf3 -c 10.200.200.1 -t 30
+#    Client VM-A: iperf3 -c 10.200.200.1 -t 30 -R
+#    UDP:         iperf3 -c 10.200.200.1 -u -b 100M -t 20
 ```
 
 **Truy vấn InfluxQL lấy kết quả:**
 ```sql
--- So sánh RTT của các đường đo
 SELECT mean("average_response_ms") AS "rtt_avg",
        max("percentile95_response_ms") AS "rtt_p95",
        mean("percent_packet_loss") AS "loss",
        mean("standard_deviation_ms") AS "jitter"
 FROM "ping"
-WHERE time > now() - 2h
-GROUP BY time(30m), "host"
+WHERE time > now() - 1h
+GROUP BY "host", "url"
 ```
 
 **Bảng kết quả:**
 
 | Đường | RTT avg (ms) | RTT p95 (ms) | Loss (%) | Jitter (ms) | Throughput (Mbps) | Số hop |
 |---|---|---|---|---|---|---|
-| D1 Cross-cloud SG↔SEA | | | | | | |
-| D2 Intra AWS SG↔Tokyo | | | | | | |
-| D3 Intra AWS SG↔US-East | | | | | | |
-| D4 Cross-cloud qua Central | | | | | | |
+| P1 Hybrid VPN (on-prem↔AWS) | 28.86 (vòng sạch) | ~30 | 0 | 0.33 | TCP 139/136; UDP 100 (0.011% loss) | 1 |
+| P2 Hybrid Internet (on-prem↔Azure) | 35.6 | ~45 | ~1.7 (TB) / ~5 (2 phút) | 9.45 | chưa đo | chưa đo |
+| P3 Cross-cloud (AWS↔Azure) | 37.27 | ~41 | 0 | 1.15 | chưa đo | 21 |
+| P4 Public path (on-prem↔AWS, không VPN) | chờ VM-A | | | | chờ VM-A | chờ VM-A |
+| P0 Loopback baseline | ~0.05 | ~0.1 | 0 | ~0.02 | — | 0 |
+
+> Kết quả thật ngày 2026-11-04. P1/P3 đo 3 vòng × 100 gói; P2 lấy từ Telegraf InfluxDB (host=vm-a, url=52.175.59.167). Chi tiết: `data/raw/iperf3-vm-a-vm-b.txt`, `data/raw/tn2-distance-latency.txt`.
 
 **Kết luận cần rút ra:**
-- Hệ số chênh lệch latency: `D1 / D2 = ___ lần`
-- Mối quan hệ giữa số hop và RTT
-- Mức tăng packet loss trên đường cross-cloud
+- **VPN overhead** = RTT(P1) − RTT(P4)
+- So sánh hybrid VPN (P1) vs hybrid Internet (P2) vs cross-cloud (P3)
+- Mối quan hệ giữa số hop (mtr) và RTT/loss
+- Vì sao P2 (gần hơn P3) có thể loss cao hơn → chất lượng tuyến ISP quan trọng hơn khoảng cách
 
 ---
 
@@ -452,38 +463,49 @@ GROUP BY time(30m), "host"
 RTT_min (ms) ≈ (2 × khoảng cách km) / 200.000 × 1000 = khoảng cách km / 100
 ```
 
-| Cặp đường | Khoảng cách (km) | RTT lý thuyết tối thiểu (ms) |
+**Nguồn đo:** VM-B (Singapore) là mốc chính; VM-A (TP.HCM) là mốc phụ. 4 probe VM ở Tokyo/Sydney/Virginia/Frankfurt **chỉ bật trong lúc đo**, tắt ngay sau đó.
+
+| Cặp | Khoảng cách (km) | RTT lý thuyết tối thiểu (ms) |
 |---|---|---|
-| Cùng thành phố | 0 | 0 |
-| SG ↔ Tokyo | 5.300 | 53 |
-| SG ↔ Virginia | 15.400 | 154 |
-| SG ← Sydney | 6.300 | 63 |
+| SG ↔ TP.HCM | ~1.100 | 11 |
+| SG ↔ Hong Kong (Central) | ~2.600 | 26 |
+| SG ↔ Tokyo | ~5.300 | 53 |
+| SG ↔ Sydney | ~6.300 | 63 |
+| SG ↔ Frankfurt | ~10.000 | 100 |
+| SG ↔ Virginia | ~15.400 | 154 |
 
 **Cách chạy:**
 ```bash
-# Telegraf inputs.ping chạy sẵn trên tất cả các cặp
-# Thu thập ≥30 phút cho mỗi cặp
-# Bổ sung: ping tới các điểm tham chiếu công khai để so sánh
-# (nslookup tên miền, ping theo tên → tự phân giải IP gần nhất)
+# Trên VM-B (Singapore): ping 100 gói tới từng đích
+for ip in <TOKYO_IP> <SYDNEY_IP> <FRANKFURT_IP> <VIRGINIA_IP> 52.175.59.167; do
+  ping -c 100 -i 0.2 "$ip"
+done
+
+# Trên VM-A (TP.HCM): lặp lại tới từng probe
+# mtr -rwc 100 <IP> để lấy số hop và loss từng chặng
 ```
 
-**Bảng kết quả:**
+**Bảng kết quả (nguồn: VM-B Singapore):**
 
 | Cặp | Khoảng cách (km) | RTT đo (ms) | RTT lý thuyết (ms) | Hiệu suất truyền dẫn (%) |
 |---|---|---|---|---|
-| Cùng thành phố | 0 | | — | — |
-| SG ↔ Tokyo | 5.300 | | 53 | |
-| SG ↔ Sydney | 6.300 | | 63 | |
-| SG ↔ Virginia | 15.400 | | 154 | |
+| SG ↔ TP.HCM (VM-A, qua VPN) | ~1.090 | 31.40 | 10.90 | 34.7 |
+| SG ↔ Hong Kong (Central) | ~2.570 | 37.27 | 25.70 | 69.0 |
+| SG ↔ Tokyo | ~5.320 | 67.92 | 53.20 | 78.3 |
+| SG ↔ Sydney | ~6.300 | 164.85 | 63.00 | 38.2 |
+| SG ↔ Frankfurt | ~10.290 | 185.51 | 102.90 | 55.5 |
+| SG ↔ Virginia | ~15.380 | 222.98 | 153.80 | 69.0 |
+
+> Kết quả thật ngày 2026-11-04: hồi quy `RTT = 0.0144 × km + 21.28`, **R² = 0.81**. Sydney là outlier (định tuyến vòng). Chi tiết: `data/raw/tn2-distance-latency.txt`.
 
 ```
 Hiệu suất truyền dẫn = RTT lý thuyết tối thiểu / RTT đo thực tế × 100%
 ```
 
 **Kết luận cần rút ra:**
-- Đường thẳng hợp lý (regression) giữa khoảng cách và RTT
-- Phần trăm độ trễ đến từ hạ tầng vật lý vs định tuyến
-- Vì sao đường dài không nhất thiết chậm hơn (định tuyến ảnh hưởng lớn hơn khoảng cách)
+- Hồi quy tuyến tính giữa khoảng cách và RTT, báo cáo hệ số R²
+- Hiệu suất truyền dẫn từng tuyến (càng xa càng tiệm cận ~70–80%)
+- Vì sao tuyến gần chưa chắc nhanh hơn: VN↔HK (~1.500 km) có thể có RTT/loss cao hơn VN↔SG (~1.100 km) do định tuyến ISP
 
 ---
 
@@ -533,10 +555,12 @@ GROUP BY time(1m)
 
 | Interval | Requests/s | Mean latency (ms) | p99 (ms) | Throughput iperf3 (Mbps) | Băng thông Telegraf (KB/s) | CPU Telegraf (%) |
 |---|---|---|---|---|---|---|
-| Tắt | | | | | ~0 | 0 |
-| 30s | | | | | | |
-| 15s | | | | | | |
-| 5s | | | | | | |
+| Tắt | 12432.07 ± 23.79 | 8.04 | 9 | chưa đo | ~0 | 0 |
+| 30s | 12692.19 ± 42.04 | 7.88 | 9 | chưa đo | ~0.23 | ~0.9 |
+| 15s | 12504.63 ± 86.40 | 7.92 | 9 | chưa đo | ~0.46 | ~1.0 |
+| 5s | 12485.17 ± 57.70 | 8.01 | 9 | chưa đo | ~0.83 | ~1.2 |
+
+> Kết quả thật trên **VM-B** ngày 2026-11-04 (3 lần/mức, `ab -n 20000 -c 100`). Overhead nằm trong nhiễu; băng thông monitoring tăng gần tuyến tính với 1/interval. Chi tiết: `data/raw/benchmark-vm-b.txt`.
 
 **Kết luận cần rút ra:**
 - Overhead tối đa của Telegraf lên throughput: `___ %`
@@ -546,17 +570,17 @@ GROUP BY time(1m)
 
 ---
 
-### TN4 — So sánh hiệu năng compute giữa AWS và Azure
+### TN4 — So sánh hiệu năng compute: On-prem vs AWS vs Azure
 
-**Giả thuyết:** Với cùng số vCPU và cùng OS, các instance của AWS và Azure cho hiệu năng compute khác nhau, phụ thuộc vào loại instance (burstable vs không giới hạn) và vi kiến trúc CPU.
+**Giả thuyết:** Với cùng số vCPU và cùng OS, on-prem, AWS và Azure cho hiệu năng compute khác nhau, phụ thuộc loại instance (burstable vs không giới hạn) và vi kiến trúc CPU.
 
-**Lưu ý bắt buộc:** Đọc lại mục **4.2 — cảnh báo về tính công bằng**. Nếu dùng t3.small (20% baseline) vs B2s (100%), phải nêu rõ hạn chế này. **Khuyến nghị dùng AWS t3.medium (40% baseline)** và chạy benchmark ở mức tải không vượt ngưỡng credit.
+**Lưu ý bắt buộc:** Đọc lại mục **4.2 — cảnh báo về tính công bằng**. Cả `t3.small` và `B2s_v2` đều là **burstable credit-based**, nên phải ghi lại `CPUCreditBalance` trước/sau mỗi lần chạy và nêu rõ hạn chế trong báo cáo.
 
-**Các phép đo con (chạy trên cùng OS, cùng thời điểm):**
+**Các phép đo con (cùng OS, cùng khung giờ, lặp 3 lần):**
 
 ```bash
 # CPU — hiệu năng đa luồng
-sysbench cpu --cpu-max-prime=25000 --threads=2 --time=60 --cpu-max-prime=25000 run
+sysbench cpu --cpu-max-prime=25000 --threads=2 --time=60 run
 
 # CPU — hiệu năng đơn luồng (kiểm tra khác biệt kiến trúc)
 sysbench cpu --cpu-max-prime=25000 --threads=1 --time=60 run
@@ -577,36 +601,41 @@ fio --name=seqread --ioengine=libaio --direct=1 --bs=1M \
     --size=1G --runtime=60 --group_reporting
 ```
 
-**Bảng kết quả (trung bình của 3 lần chạy):**
+**Bảng kết quả (trung bình ± độ lệch chuẩn của 3 lần chạy):**
 
-| Phép đo | Đơn vị | AWS (t3.medium) | Azure (B2s) | Tỷ lệ | Độ lệch chuẩn |
-|---|---|---|---|---|---|
-| CPU 1 thread | events/sec | | | | |
-| CPU 2 threads | events/sec | | | | |
-| RAM read | MiB/sec | | | | |
-| Disk seq read | MB/s | | | | |
-| Disk rand read | IOPS | | | | |
-| Disk rand read | avg latency (µs) | | | | |
-| Disk rand write | IOPS | | | | |
+| Phép đo | Đơn vị | On-prem VM-A | AWS VM-B (t3.small) | Azure Central (B2s_v2) |
+|---|---|---|---|---|
+| CPU 1 thread | events/sec | (chờ VM-A) | 302.17 ± 0.07 | 842.98 ± 0.57 |
+| CPU 2 threads | events/sec | (chờ VM-A) | 475.60 ± 0.10 | 877.07 ± 0.14 |
+| RAM read | MiB/sec | (chờ VM-A) | 6869.05 ± 13.62 | 8037.97 ± 190.01 |
+| Disk seq read | MB/s | (chờ VM-A) | 137.67 ± 6.13 | 127.67 ± 0.47 |
+| Disk rand read | IOPS | (chờ VM-A) | 3047.67 ± 0.47 | 9392.00 ± 2.94 |
+| Disk rand read | avg latency (µs) | (chờ VM-A) | 10186.81 ± 0.51 | 3401.45 ± 1.32 |
+| Disk rand write | IOPS | (chờ VM-A) | 3009.67 ± 2.05 | 557.67 ± 0.94 |
 
-**Bổ sung: chi phí trên hiệu năng**
+> Kết quả thật ngày 2026-11-04 (3 lần × 60s, `direct=1 iodepth=32`). Azure CPU nhanh hơn ~2.8× nhưng ghi ngẫu nhiên chậm hơn ~5.4×. Chi tiết: `data/raw/benchmark-vm-b.txt`, `data/raw/benchmark-azure-central.txt`.
+
+**Bổ sung: credit & chi phí trên hiệu năng**
+
 ```sql
--- Ghi vào báo cáo
+-- CPU% thực tế trong lúc benchmark (từ InfluxDB)
 SELECT mean("usage_user") + mean("usage_system") AS cpu_percent
-FROM "cpu" WHERE "host" = 'vm-a' AND time > now() - 1h
+FROM "cpu" WHERE "host" = 'vm-b' AND time > now() - 1h
 GROUP BY time(1m)
 ```
 
-| | AWS t3.medium | Azure B2s |
-|---|---|---|
-| Giá/tháng | $0.0416/giờ | $0.0836/giờ |
-| CPU ops/s đạt được | | |
-| **ops/s trên 1 USD** | | |
+| | On-prem VM-A | AWS t3.small | Azure B2s_v2 |
+|---|---|---|---|
+| Giá/tháng (ước tính) | $0 (điện + hạ tầng) | ~$15 | ~$30 |
+| CPU ops/s đạt được | | | |
+| **ops/s trên 1 USD** | | | |
+| CPUCreditBalance trước/sau | — | | |
 
 **Kết luận cần rút ra:**
-- Cloud nào cho hiệu năng compute cao hơn trên cùng cấu hình
-- Cloud nào có **chi phí trên đơn vị hiệu năng** tốt hơn
-- Tác động của cơ chế burstable/credit đến kết quả đo
+- Provider nào cho hiệu năng compute cao nhất trên cấu hình tương đương
+- Chi phí trên đơn vị hiệu năng
+- Tác động của cơ chế burstable/credit (cả t3.small và B2s_v2 đều burstable)
+- On-prem mạnh/yếu hơn cloud ở điểm nào (CPU, disk, memory)
 
 ---
 

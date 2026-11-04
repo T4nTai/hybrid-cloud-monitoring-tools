@@ -57,7 +57,27 @@ module "vm_b" {
   allowed_ssh_cidrs = local.admin_cidr
 
   # VM-B KHÔNG mở 8086 (Central ở Azure). Chỉ ICMP inbound (module tự mở) + SSH.
-  allowed_ingress_rules = []
+  # iperf3 chỉ cho phép từ subnet WireGuard (VM-A) — không mở ra Internet.
+  allowed_ingress_rules = [
+    {
+      description = "iperf3 from WireGuard peer (VM-A)"
+      port        = 5201
+      protocol    = "tcp"
+      cidr_blocks = ["10.200.200.0/24"]
+    },
+    {
+      description = "iperf3 UDP from WireGuard peer (VM-A)"
+      port        = 5201
+      protocol    = "udp"
+      cidr_blocks = ["10.200.200.0/24"]
+    },
+    {
+      description = "HTTP nginx from WireGuard peer (VM-A) for ab test"
+      port        = 80
+      protocol    = "tcp"
+      cidr_blocks = ["10.200.200.0/24"]
+    }
+  ]
 
   tags = {
     Name        = "vm-b"
