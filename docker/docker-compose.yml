@@ -47,27 +47,37 @@ services:
       timeout: 10s
       retries: 5
 
-  # Telegraf Central (optional) - thu thập metrics từ CloudWatch (AWS)
-  # Bỏ comment nếu muốn thu thập metrics native từ AWS CloudWatch
-  # telegraf-central:
-  #   image: telegraf:1.29
-  #   container_name: telegraf-central
-  #   restart: always
-  #   volumes:
-  #     - ./telegraf-central.conf:/etc/telegraf/telegraf.conf:ro
-  #   networks:
-  #     - monitoring
-  #   depends_on:
-  #     - influxdb
-  #   environment:
-  #     - AWS_REGION=ap-southeast-1
-  #     # Dùng IAM role hoặc provide access key qua .env
-  #     # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-  #     # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+  # Kapacitor — thành phần "K" của TICK stack (xử lý luồng + cảnh báo)
+  # Nhận dữ liệu từ InfluxDB, chạy TICKscript, ghi alert ngược vào InfluxDB
+  kapacitor:
+    image: kapacitor:1.7
+    container_name: kapacitor
+    restart: always
+    ports:
+      - "9092:9092"
+    environment:
+      - KAPACITOR_HOSTNAME=kapacitor
+      - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:8086
+      - KAPACITOR_INFLUXDB_0_USERNAME=admin
+      - KAPACITOR_INFLUXDB_0_PASSWORD=${INFLUXDB_PASSWORD}
+    volumes:
+      - kapacitor-data:/var/lib/kapacitor
+      - ./kapacitor/tick:/etc/kapacitor/tick:ro
+    networks:
+      - monitoring
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kapacitor list tasks >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
   influxdb-data:
   chronograf-data:
+  kapacitor-data:
 
 networks:
   monitoring:

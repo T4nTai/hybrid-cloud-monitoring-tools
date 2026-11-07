@@ -1,0 +1,41 @@
+// =============================================================================
+// TICKscript: Packet Loss Alert
+// Kịch bản: Cảnh báo khi tỷ lệ mất gói vượt ngưỡng
+//   WARNING  : loss > 2%  (bắt đầu ảnh hưởng throughput TCP)
+//   CRITICAL : loss > 5%  (đường truyền không ổn định, cần kiểm tra ISP/VPN)
+//
+// Nguồn dữ liệu: measurement `ping`, field `percent_packet_loss`
+// =============================================================================
+
+stream
+    |from()
+        .database('monitoring')
+        .retentionPolicy('autogen')
+        .measurement('ping')
+        .groupBy('host', 'url')
+
+    // Trung bình trượt 3 phút → loss thường xuất hiện theo đợt ngắn,
+    // window rộng hơn giúp tránh false alarm từ 1-2 gói mất đơn lẻ
+    |window()
+        .period(3m)
+        .every(30s)
+
+    |mean('percent_packet_loss')
+        .as('loss_mean')
+
+    |alert()
+        .id('packet-loss/{{ index .Tags "host" }}-to-{{ index .Tags "url" }}')
+        .message(
+            '[{{ .Level }}] Packet loss {{ index .Tags "host" }} → {{ index .Tags "url" }}: ' +
+            '{{ .Fields.loss_mean | printf "%.2f" }}% ' +
+            '(WARNING > 2%, CRITICAL > 5%)'
+        )
+        .warn(lambda: "loss_mean" > 2.0)
+        .crit(lambda: "loss_mean" > 5.0)
+        .stateChangesOnly()
+
+        .influxDBOut()
+            .database('monitoring')
+            .retentionPolicy('autogen')
+            .measurement('alerts_packet_loss')
+            .tag('alert_type', 'packet_loss')

@@ -105,6 +105,28 @@ module "central" {
       source_address_prefix      = "*"
       destination_address_prefix = "*"
     },
+    {
+      name                       = "AllowKapacitor"
+      priority                   = 140
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "9092"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "AllowIperf3"
+      priority                   = 150
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "*"
+      source_port_range          = "*"
+      destination_port_range     = "5201"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
   ]
 
   tags = {

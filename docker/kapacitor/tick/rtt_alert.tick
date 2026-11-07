@@ -1,0 +1,46 @@
+// =============================================================================
+// TICKscript: RTT Alert
+// Kịch bản: Cảnh báo khi RTT trung bình (rolling 2 phút) vượt ngưỡng
+//   WARNING  : RTT > 80 ms  (đường truyền bắt đầu chậm, ảnh hưởng API calls)
+//   CRITICAL : RTT > 150 ms (đường truyền quá chậm, cần kiểm tra ngay)
+//
+// Nguồn dữ liệu: measurement `ping`, field `average_response_ms`
+// Agent nào trigger: vm-a (on-prem→AWS/Azure) hoặc vm-b (AWS→Azure)
+// =============================================================================
+
+// Đọc luồng dữ liệu từ InfluxDB, measurement `ping`
+stream
+    |from()
+        .database('monitoring')
+        .retentionPolicy('autogen')
+        .measurement('ping')
+        .groupBy('host', 'url')   // nhóm theo node (vm-a/vm-b) và target ping
+
+    // Trung bình trượt 2 phút → giảm nhiễu từ spike đơn lẻ
+    |window()
+        .period(2m)
+        .every(30s)
+
+    |mean('average_response_ms')
+        .as('rtt_mean')
+
+    // Đánh giá ngưỡng cảnh báo
+    |alert()
+        .id('rtt-alert/{{ index .Tags "host" }}-to-{{ index .Tags "url" }}')
+        .message(
+            '[{{ .Level }}] RTT {{ index .Tags "host" }} → {{ index .Tags "url" }}: ' +
+            '{{ .Fields.rtt_mean | printf "%.1f" }} ms ' +
+            '(WARNING > 80ms, CRITICAL > 150ms)'
+        )
+        .warn(lambda: "rtt_mean" > 80.0)
+        .crit(lambda: "rtt_mean" > 150.0)
+
+        // Chỉ cảnh báo khi trạng thái THAY ĐỔI (tránh spam)
+        .stateChangesOnly()
+
+        // Ghi alert vào InfluxDB (hiển thị trên Chronograf Alert History)
+        .influxDBOut()
+            .database('monitoring')
+            .retentionPolicy('autogen')
+            .measurement('alerts_rtt')
+            .tag('alert_type', 'rtt')

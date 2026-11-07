@@ -85,9 +85,29 @@ services:
     depends_on:
       - influxdb
 
+  kapacitor:
+    image: kapacitor:1.7
+    container_name: kapacitor
+    restart: always
+    ports:
+      - "9092:9092"
+    environment:
+      - KAPACITOR_HOSTNAME=kapacitor
+      - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:8086
+      - KAPACITOR_INFLUXDB_0_USERNAME=admin
+      - KAPACITOR_INFLUXDB_0_PASSWORD=${INFLUXDB_PASSWORD:-admin123}
+    volumes:
+      - kapacitor-data:/var/lib/kapacitor
+      - ./kapacitor/tick:/etc/kapacitor/tick:ro
+    networks:
+      - monitoring
+    depends_on:
+      - influxdb
+
 volumes:
   influxdb-data:
   chronograf-data:
+  kapacitor-data:
 
 networks:
   monitoring:
@@ -97,6 +117,16 @@ EOF
 cat > "$PROJECT_DIR/.env" <<EOF
 INFLUXDB_PASSWORD=CHANGE_ME_PLEASE
 EOF
+
+# Copy Kapacitor TICKscripts + deploy script vào project dir
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$SCRIPT_DIR/../../docker/kapacitor" ]; then
+    cp -r "$SCRIPT_DIR/../../docker/kapacitor" "$PROJECT_DIR/"
+    chmod +x "$PROJECT_DIR/kapacitor/deploy-kapacitor-tasks.sh" 2>/dev/null || true
+    echo "✓ Copied Kapacitor tasks → $PROJECT_DIR/kapacitor/"
+else
+    echo "⚠ Không tìm thấy docker/kapacitor — copy thủ công TICKscripts sau"
+fi
 
 echo ""
 echo "======================================================"
@@ -114,11 +144,16 @@ echo "  2. nano .env  (change password)"
 echo "  3. docker-compose up -d"
 echo "  4. docker-compose ps  (verify running)"
 echo ""
+echo "Deploy Kapacitor alerting tasks (after step 3):"
+echo "  ./kapacitor/deploy-kapacitor-tasks.sh"
+echo ""
 echo "Access:"
 echo "  - Chronograf: http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):8888"
 echo "  - InfluxDB:   http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):8086"
+echo "  - Kapacitor:  http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):9092"
 echo ""
 echo "Check logs:"
 echo "  - docker-compose logs -f influxdb"
 echo "  - docker-compose logs -f chronograf"
+echo "  - docker-compose logs -f kapacitor"
 echo "======================================================"
