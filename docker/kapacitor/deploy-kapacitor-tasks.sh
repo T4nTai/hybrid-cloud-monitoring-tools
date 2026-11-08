@@ -23,7 +23,7 @@ echo "  Scripts: ${TICK_DIR}"
 echo ""
 
 # Kiểm tra Kapacitor có sống không
-if ! curl -fsS "http://${HOST}:${PORT}/ping" >/dev/null 2>&1; then
+if ! curl -fsS "http://${HOST}:${PORT}/kapacitor/v1/ping" >/dev/null 2>&1; then
     echo "ERROR: Không kết nối được Kapacitor tại ${HOST}:${PORT}"
     echo "       Kiểm tra: docker-compose ps | grep kapacitor"
     exit 1

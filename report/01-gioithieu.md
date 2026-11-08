@@ -33,6 +33,9 @@ Khi triển khai agent như Telegraf để thu thập metrics mạng và hệ th
 **Q4 (TN4): Hiệu năng tính toán (compute) của on-premise so với cloud khác nhau như thế nào?**  
 Một server vật lý tại chỗ (ví dụ Intel Core i5) so với instance cloud tương đương về vCPU (ví dụ AWS t3.small, Azure B2s_v2) có hiệu năng CPU, RAM, và I/O (IOPS, throughput) chênh lệch bao nhiêu? Ảo hóa (virtualization) trên cloud có ảnh hưởng đáng kể không? Burstable instance có phù hợp cho workload ổn định không?
 
+**Q5 (TN5): Hệ thống giám sát có phát hiện và cảnh báo sự cố hiệu quả không?**  
+Khi đường truyền suy giảm (tăng độ trễ, mất gói) hoặc một node gặp sự cố, Kapacitor mất bao lâu để phát cảnh báo đúng ngưỡng? Độ trễ phát hiện phụ thuộc thế nào vào tần số lấy mẫu của Telegraf? Hệ thống có tránh báo động giả và tự trở về trạng thái bình thường không?
+
 Các câu hỏi này không chỉ quan trọng về mặt kỹ thuật mà còn ảnh hưởng trực tiếp đến **chi phí vận hành** (chọn region xa hơn có rẻ hơn nhưng latency cao có chấp nhận được?), **trải nghiệm người dùng** (API response time < 200ms?), và **chiến lược thiết kế** (nên đặt cache ở đâu? microservice giao tiếp thế nào?).
 
 ## 1.3. Mục tiêu nghiên cứu
@@ -50,7 +53,9 @@ Nghiên cứu này nhằm **đo đạc định lượng hiệu năng mạng và 
 
 4. **So sánh hiệu năng compute** (CPU, memory, I/O) giữa on-premise server và cloud instance tương đương, phân tích tác động của ảo hóa và burstable CPU credit.
 
-5. **Xây dựng một lab hybrid cloud mở** (open-source, tái sử dụng được) với Terraform, WireGuard VPN, và TICK stack, phục vụ mục đích giảng dạy và thử nghiệm.
+5. **Kiểm chứng hiệu quả giám sát và cảnh báo** của Kapacitor (nạp và chạy tác vụ, phát cảnh báo đúng ngưỡng, độ trễ phát hiện, chống báo động giả) trên mô hình hybrid cloud.
+
+6. **Xây dựng một lab hybrid cloud mở** (open-source, tái sử dụng được) với Terraform, WireGuard VPN, và TICK stack, phục vụ mục đích giảng dạy và thử nghiệm.
 
 ## 1.4. Phạm vi nghiên cứu
 
@@ -64,7 +69,7 @@ Nghiên cứu này nhằm **đo đạc định lượng hiệu năng mạng và 
 ### 1.4.2. Thời gian
 
 - **Triển khai và cấu hình**: 3 ngày (2026-11-01 → 11-03).
-- **Thu thập dữ liệu**: 1 tuần (2026-11-04 → 11-10), mỗi thí nghiệm lặp lại 3 lần, tổng cộng 4 thí nghiệm (TN1-TN4).
+- **Thu thập dữ liệu**: 1 tuần (2026-11-04 → 11-10), mỗi thí nghiệm lặp lại 3 lần, tổng cộng 5 thí nghiệm (TN1–TN5).
 - **Điều kiện**: Thí nghiệm chạy trong giờ hành chính (9:00-18:00 GMT+7), tránh giờ cao điểm Internet (20:00-23:00).
 
 ### 1.4.3. Công nghệ
@@ -114,7 +119,7 @@ Báo cáo được tổ chức thành 8 chương:
 - **Chương 1 (hiện tại)**: Giới thiệu bối cảnh, vấn đề, mục tiêu, phạm vi, và đóng góp.
 - **Chương 2**: Cơ sở lý thuyết về hybrid cloud, network metrics, VPN, monitoring stack, và compute benchmark.
 - **Chương 3**: Kiến trúc hệ thống — topology, cấu hình chi tiết từng thành phần (on-premise, AWS, Azure, VPN, TICK).
-- **Chương 4**: Thiết kế thí nghiệm — phương pháp, công cụ, tham số cho TN1, TN2, TN3, TN4.
+- **Chương 4**: Thiết kế thí nghiệm — phương pháp, công cụ, tham số cho TN1, TN2, TN3, TN4, TN5.
 - **Chương 5**: Kết quả — dữ liệu đo được, biểu đồ, bảng so sánh.
 - **Chương 6**: Thảo luận — giải thích kết quả, so sánh nghiên cứu liên quan, ý nghĩa thực tiễn, hạn chế, hướng phát triển.
 - **Chương 7**: Kết luận — tóm tắt đóng góp, kết luận chính, khuyến nghị.
@@ -125,4 +130,4 @@ Báo cáo được tổ chức thành 8 chương:
 ---
 
 **Tóm tắt chương**  
-Chương này giới thiệu bối cảnh hybrid cloud, đặt ra 4 câu hỏi nghiên cứu về latency, distance, monitoring overhead, và compute performance. Mục tiêu là đo đạc định lượng hiệu năng mạng giữa on-premise Việt Nam và cloud APAC, xây dựng dataset thực tế và lab mở. Phạm vi bao gồm 3 điểm (TP.HCM, Singapore, Hong Kong), 1 tuần đo, với 4 thí nghiệm (TN1-TN4) sử dụng TICK stack và WireGuard VPN. Đóng góp chính là dữ liệu APAC hybrid cloud, công thức distance-latency, đánh giá Telegraf overhead, và so sánh compute on-prem vs cloud.
+Chương này giới thiệu bối cảnh hybrid cloud, đặt ra 5 câu hỏi nghiên cứu về latency, distance, monitoring overhead, compute performance, và hiệu quả cảnh báo. Mục tiêu là đo đạc định lượng hiệu năng mạng giữa on-premise Việt Nam và cloud APAC, xây dựng dataset thực tế và lab mở. Phạm vi bao gồm 3 điểm (TP.HCM, Singapore, Hong Kong), 1 tuần đo, với 5 thí nghiệm (TN1–TN5) sử dụng TICK stack và WireGuard VPN. Đóng góp chính là dữ liệu APAC hybrid cloud, công thức distance-latency, đánh giá Telegraf overhead, và so sánh compute on-prem vs cloud.

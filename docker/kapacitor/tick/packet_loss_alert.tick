@@ -34,7 +34,7 @@ stream
         .crit(lambda: "loss_mean" > 5.0)
         .stateChangesOnly()
 
-        .influxDBOut()
+        |influxDBOut()
             .database('monitoring')
             .retentionPolicy('autogen')
             .measurement('alerts_packet_loss')

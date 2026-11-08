@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # Script: Setup Central VM (Azure) — Docker + TICK Stack
-# Mục đích: Cài Docker + Docker Compose + chạy InfluxDB + Chronograf trên Azure Central
+# Mục đích: Cài Docker + Compose V2 + chạy InfluxDB + Chronograf + Kapacitor
 # Yêu cầu: Ubuntu 22.04 trên Azure VM, user có sudo
 # =============================================================================
 
@@ -17,40 +17,40 @@ if [[ $EUID -eq 0 ]]; then
    exit 1
 fi
 
-# Update system
-echo "[1/5] Updating system packages..."
-sudo apt update && sudo apt upgrade -y
+# Update system (non-interactive để tránh treo do popup kernel upgrade)
+echo "[1/4] Updating system packages..."
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update && sudo apt-get upgrade -y -o Dpkg::Options::="--force-confold"
 
-# Install Docker
-echo "[2/5] Installing Docker..."
+# Install Docker + Docker Compose Plugin
+echo "[2/4] Installing Docker and dependencies..."
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker $USER
-    echo "✓ Docker installed. You need to LOG OUT and LOG IN for group changes to take effect."
+    sudo usermod -aG docker "$USER"
+    echo "✓ Docker & Docker Compose V2 installed."
 else
     echo "✓ Docker already installed"
 fi
 
-# Install Docker Compose
-echo "[3/5] Installing Docker Compose..."
-if ! command -v docker-compose &> /dev/null; then
-    sudo apt install -y docker-compose
-else
-    echo "✓ Docker Compose already installed"
+# Support tools
+echo "[3/4] Installing support tools..."
+sudo apt-get install -y curl wget net-tools mtr-tiny
+
+# Create directory structure
+PROJECT_DIR="$HOME/hybrid-cloud-monitoring"
+mkdir -p "$PROJECT_DIR/kapacitor/tick"
+
+echo "[4/4] Preparing Docker Compose configuration..."
+
+# Tạo mật khẩu ngẫu nhiên an toàn nếu file .env chưa có
+RANDOM_PASS=$(openssl rand -hex 12)
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+cat > "$PROJECT_DIR/.env" <<EOF
+INFLUXDB_PASSWORD=${RANDOM_PASS}
+EOF
 fi
 
-# Install benchmark tools (iperf3 optional cho Central, nhưng không dùng vì không tham gia đo)
-echo "[4/5] Installing support tools..."
-sudo apt install -y curl wget net-tools mtr-tiny
-
-# Create directory for TICK stack
-PROJECT_DIR="$HOME/hybrid-cloud-monitoring"
-mkdir -p "$PROJECT_DIR"
-
-echo "[5/5] Preparing Docker Compose configuration..."
 cat > "$PROJECT_DIR/docker-compose.yml" <<'EOF'
-version: '3.8'
-
 services:
   influxdb:
     image: influxdb:1.8
@@ -61,7 +61,7 @@ services:
     environment:
       - INFLUXDB_DB=monitoring
       - INFLUXDB_ADMIN_USER=admin
-      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD:-admin123}
+      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_AUTH_ENABLED=true
     volumes:
       - influxdb-data:/var/lib/influxdb
@@ -77,7 +77,7 @@ services:
     environment:
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_USERNAME=admin
-      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD:-admin123}
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
     volumes:
       - chronograf-data:/var/lib/chronograf
     networks:
@@ -95,7 +95,7 @@ services:
       - KAPACITOR_HOSTNAME=kapacitor
       - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:8086
       - KAPACITOR_INFLUXDB_0_USERNAME=admin
-      - KAPACITOR_INFLUXDB_0_PASSWORD=${INFLUXDB_PASSWORD:-admin123}
+      - KAPACITOR_INFLUXDB_0_PASSWORD=${INFLUXDB_PASSWORD}
     volumes:
       - kapacitor-data:/var/lib/kapacitor
       - ./kapacitor/tick:/etc/kapacitor/tick:ro
@@ -114,46 +114,34 @@ networks:
     driver: bridge
 EOF
 
-cat > "$PROJECT_DIR/.env" <<EOF
-INFLUXDB_PASSWORD=CHANGE_ME_PLEASE
-EOF
-
-# Copy Kapacitor TICKscripts + deploy script vào project dir
+# Copy Kapacitor tasks
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -d "$SCRIPT_DIR/../../docker/kapacitor" ]; then
-    cp -r "$SCRIPT_DIR/../../docker/kapacitor" "$PROJECT_DIR/"
+    cp -r "$SCRIPT_DIR/../../docker/kapacitor/"* "$PROJECT_DIR/kapacitor/" 2>/dev/null || true
     chmod +x "$PROJECT_DIR/kapacitor/deploy-kapacitor-tasks.sh" 2>/dev/null || true
     echo "✓ Copied Kapacitor tasks → $PROJECT_DIR/kapacitor/"
 else
     echo "⚠ Không tìm thấy docker/kapacitor — copy thủ công TICKscripts sau"
 fi
 
+PUBLIC_IP=$(curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>')
+
 echo ""
 echo "======================================================"
 echo "Central VM setup completed!"
 echo "======================================================"
-echo "Configuration:"
-echo "  - Project dir:  $PROJECT_DIR"
-echo "  - Compose file: $PROJECT_DIR/docker-compose.yml"
-echo ""
-echo "IMPORTANT: Edit $PROJECT_DIR/.env and change INFLUXDB_PASSWORD!"
-echo ""
 echo "Next steps:"
-echo "  1. cd $PROJECT_DIR"
-echo "  2. nano .env  (change password)"
-echo "  3. docker-compose up -d"
-echo "  4. docker-compose ps  (verify running)"
+echo "  1. Áp dụng quyền Docker group (chạy không cần sudo):"
+echo "     newgrp docker"
+echo "  2. Đi đến thư mục dự án:"
+echo "     cd $PROJECT_DIR"
+echo "  3. Khởi động TICK stack:"
+echo "     docker compose up -d"
+echo "  4. Kiểm tra trạng thái containers:"
+echo "     docker compose ps"
 echo ""
-echo "Deploy Kapacitor alerting tasks (after step 3):"
-echo "  ./kapacitor/deploy-kapacitor-tasks.sh"
-echo ""
-echo "Access:"
-echo "  - Chronograf: http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):8888"
-echo "  - InfluxDB:   http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):8086"
-echo "  - Kapacitor:  http://$(curl -s ifconfig.me 2>/dev/null || echo '<AZURE-PUBLIC-IP>'):9092"
-echo ""
-echo "Check logs:"
-echo "  - docker-compose logs -f influxdb"
-echo "  - docker-compose logs -f chronograf"
-echo "  - docker-compose logs -f kapacitor"
+echo "Access URLs:"
+echo "  - Chronograf: http://$PUBLIC_IP:8888"
+echo "  - InfluxDB:   http://$PUBLIC_IP:8086"
+echo "  - Kapacitor:  http://$PUBLIC_IP:9092"
 echo "======================================================"

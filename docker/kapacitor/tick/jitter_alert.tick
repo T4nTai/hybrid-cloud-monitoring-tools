@@ -38,7 +38,7 @@ stream
         .crit(lambda: "jitter_mean" > 25.0)
         .stateChangesOnly()
 
-        .influxDBOut()
+        |influxDBOut()
             .database('monitoring')
             .retentionPolicy('autogen')
             .measurement('alerts_jitter')

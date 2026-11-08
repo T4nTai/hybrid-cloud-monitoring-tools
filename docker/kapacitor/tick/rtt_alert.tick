@@ -39,7 +39,7 @@ stream
         .stateChangesOnly()
 
         // Ghi alert vào InfluxDB (hiển thị trên Chronograf Alert History)
-        .influxDBOut()
+        |influxDBOut()
             .database('monitoring')
             .retentionPolicy('autogen')
             .measurement('alerts_rtt')

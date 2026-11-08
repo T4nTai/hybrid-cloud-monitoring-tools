@@ -1,0 +1,187 @@
+================================================================================
+              PHÂN CÔNG CÔNG VIỆC & NHẬT KÝ ĐÓNG GÓP
+================================================================================
+Dự án   : Hybrid Cloud Monitoring — Đánh giá hiệu năng mạng
+Môn     : Đánh giá hiệu năng hệ thống mạng máy tính (NT531)
+Nhóm    : 2 thành viên
+Ngày    : 2026-11-08
+
+Thành viên:
+  - Người A : ................................  (Mạng & Hạ tầng)
+  - Người B : ................................  (Hiệu năng host & Phân tích)
+
+GHI CHÚ: Mục "Đã hoàn thành" liệt kê theo phạm vi công việc thực tế đã có trong
+repo và trên cloud. Nhóm xác nhận lại và điền tên người thực hiện cụ thể vào cột
+"Người A / Người B".
+
+--------------------------------------------------------------------------------
+1. PHÂN CÔNG TỔNG QUAN
+--------------------------------------------------------------------------------
+  Hạng mục                          | Người A (Mạng & Hạ tầng) | Người B (Host & Phân tích)
+  ----------------------------------|--------------------------|---------------------------
+  Terraform (AWS + Azure)           | Chính                    | Hỗ trợ
+  Vận hành cluster (bật/tắt VM)     | Chính                    | -
+  WireGuard VPN                     | Chính                    | -
+  TICK stack + Kapacitor            | Chính                    | Hỗ trợ
+  Telegraf agent (VM-A, VM-B)       | Chính                    | Hỗ trợ
+  TN1 - Latency/Throughput          | Chính                    | -
+  TN2 - Khoảng cách vs RTT          | Chính                    | Hỗ trợ phân tích
+  TN3 - Overhead Telegraf           | -                        | Chính
+  TN4 - Compute benchmark           | -                        | Chính
+  Khung phân tích (analysis/)       | Hỗ trợ                    | Chính
+  Viết báo cáo                      | TN1/TN2, kiến trúc       | TN3/TN4, phương pháp
+  Slide & demo                      | Phần TN1/TN2             | Phần TN3/TN4
+
+--------------------------------------------------------------------------------
+2. NGƯỜI A — MẠNG & HẠ TẦNG
+--------------------------------------------------------------------------------
+Vai trò: sở hữu hạ tầng, vận hành cluster, các thí nghiệm mạng (TN1, TN2).
+
+### 2.1. ĐÃ HOÀN THÀNH
+
+[1] Terraform — mã nguồn hạ tầng
+    - terraform/modules/aws-vm/  : module EC2 tái sử dụng (EC2 + SG + Elastic IP,
+      root volume gp3 mã hoá, IMDSv2 bật)
+    - terraform/modules/azure-vm/ : module Azure VM (VM + NIC + Public IP tĩnh + NSG)
+    - terraform/aws/             : VM-B Singapore (t3.small) + EIP; provider đa vùng
+      cho VM-C (Tokyo) và VM-D (US-East) bật/tắt bằng enable_distance_vms
+    - terraform/azure/           : Central VM (eastasia, Standard_B2s_v2) + NSG rules
+    - Sửa bug: output "ssh_command" của module aws-vm dùng nhầm key_name làm user
+      SSH -> thêm biến ssh_user (mặc định "ubuntu"), output nay đúng "ssh ubuntu@IP"
+    - Cập nhật terraform/aws/terraform.tfvars: sửa comment account sai
+      (991232066758 -> 638120275076)
+
+[2] Triển khai hạ tầng cloud (đã verify)
+    - Azure Central : 20.255.72.0 (private 10.0.1.4) — resource group NT531
+    - AWS VM-B      : 18.143.221.246 (private 172.31.21.81, id i-0b0a48b14c8d98c8f)
+    - terraform validate PASS ở cả aws và azure
+
+[3] TICK stack trên Azure Central
+    - docker/docker-compose.yml: InfluxDB 1.8 + Chronograf 1.10 + Kapacitor 1.7
+    - scripts/setup/setup-central.sh: cài Docker + Compose V2, sinh .env (mật khẩu
+      random), tạo compose project tại ~/hybrid-cloud-monitoring, copy Kapacitor tasks
+    - Kiểm chứng: cả 3 container Up; InfluxDB database "monitoring" tồn tại;
+      Chronograf HTTP 200 (từ IP admin); Kapacitor HTTP 204 tại /kapacitor/v1/ping
+
+[4] WireGuard VPN (VM-B <-> VM-A)
+    - scripts/setup/setup-wireguard-server.sh (VM-B): server 10.200.200.1:51820/udp,
+      bật IP forwarding, wg-quick@wg0 enable
+    - scripts/setup/setup-wireguard-client.sh (VM-A): client 10.200.200.2
+    - Kiểm chứng: handshake 2 chiều OK, ping 10.200.200.1 tu VM-A ~31.5ms, 0% loss;
+      SG vm-b-sg đã mở udp 51820
+
+[5] Kapacitor — TICKscripts cảnh báo
+    - docker/kapacitor/tick/: rtt_alert.tick, packet_loss_alert.tick, jitter_alert.tick
+    - docker/kapacitor/deploy-kapacitor-tasks.sh: nạp task vào Kapacitor
+    - Sửa 2 bug:
+        a) deploy script health-check gọi sai "/ping" -> sửa thành "/kapacitor/v1/ping"
+        b) cả 3 file .tick dùng ".influxDBOut()" (property) -> sửa thành "|influxDBOut()"
+    - Kiểm chứng: 3 task đang "enabled" và "executing"
+
+[6] Telegraf agent
+    - scripts/setup/setup-agent.sh     : cài Telegraf 1.32.2 (.deb) + setcap cap_net_raw
+                                         + sysbench/fio/iperf3/ab/mtr/nginx
+    - scripts/setup/configure-telegraf.sh: sinh /etc/telegraf/telegraf.conf theo IP/pass
+    - scripts/setup/check-health.sh    : kiểm tra toàn hệ thống
+    - Kiểm chứng VM-B: telegraf active, data đổ về InfluxDB
+
+[7] Vận hành & dọn dẹp
+    - Dọn hạ tầng cũ (terraform destroy) + release Elastic IP mồ côi 18.139.136.124
+    - Bật/tắt VM tiết kiệm chi phí: Azure "az vm deallocate", AWS "ec2 stop-instances"
+    - Quản lý IP/mật khẩu làm nguồn chuẩn duy nhất cho cả nhóm
+
+### 2.2. NHIỆM VỤ CÒN LẠI
+    - Viết scripts/benchmark/run-tn1.sh (RTT/loss/jitter: VPN vs public; iperf3)
+    - Viết scripts/benchmark/run-tn2.sh + mở rộng probe (VM-C/D hoặc public probes)
+    - analysis/tn1_analysis.py, tn2_analysis.py (hồi quy RTT ~ khoảng cách, R^2)
+    - scripts/analysis/export-influxdb.sh (xuất dữ liệu thô cho báo cáo)
+
+--------------------------------------------------------------------------------
+3. NGƯỜI B — HIỆU NĂNG HOST & PHÂN TÍCH
+--------------------------------------------------------------------------------
+Vai trò: khung phân tích dữ liệu, harness benchmark, thí nghiệm host (TN3, TN4).
+
+### 3.1. ĐÃ HOÀN THÀNH
+
+[1] Khung phân tích Python (analysis/)
+    - analysis/requirements.txt
+    - analysis/common/__init__.py, loaders.py (đọc dữ liệu InfluxDB/CSV), style.py
+      (style biểu đồ dùng chung)
+    - analysis/tn1_analysis.py, tn2_analysis.py, tn3_analysis.py, tn4_analysis.py
+      (khung, cần hoàn thiện)
+
+[2] Harness benchmark (scripts/benchmark/)
+    - scripts/benchmark/lib/common.sh       : hàm dùng chung
+    - scripts/benchmark/run-vm-a-full.sh    : bộ đo trên VM-A (kiểm tra tools, TN1-P4,
+      TN3 overhead, TN4 compute qua sysbench/fio), lưu ~/benchmark-results/
+    - scripts/benchmark/run-tn1.sh..run-tn4.sh (khung)
+
+[3] Template cấu hình Telegraf
+    - configs/telegraf-agent.conf   : template agent (cpu/mem/disk/net/ping/net_response/
+      http_response)
+    - configs/telegraf-central.conf : template Central (CloudWatch + internal + docker)
+    - configs/variables.env.example
+
+[4] Hạ tầng on-premise (KVM)
+    - scripts/setup/install-kvm.sh  : cài KVM/QEMU/libvirt trên host
+    - scripts/setup/create-vm-a.sh  : tạo VM-A guest (cloud-init, 2GB RAM, 16GB disk)
+    - scripts/setup/setup-vm-a.sh   : (bản cũ, cần sửa hardcode)
+
+[5] Khung báo cáo (report/)
+    - report/00-template.md .. report/08-tailieu.md
+    - report/appendix/experiment-log.md
+    - docs/architecture.md, docs/methodology.md, docs/influxql-queries.md,
+      docs/troubleshooting.md, docs/credentials-checklist.md, docs/on-premise-setup.md
+
+### 3.2. NHIỆM VỤ CÒN LẠI
+    - Viết scripts/benchmark/run-tn3.sh   : đo overhead Telegraf QUA NIC (KHÔNG loopback)
+    - Viết scripts/benchmark/run-tn4.sh   : sysbench (CPU/RAM) + fio (I/O) cho 3 node
+    - Hoàn thiện analysis/tn3_analysis.py, tn4_analysis.py (mean/std/percentile, biểu đồ)
+    - Xây dựng biểu đồ: boxplot CPU/IOPS, req/s theo mức interval Telegraf
+    - Chuẩn hoá analysis/common/loaders.py để Người A tái sử dụng cho TN1/TN2
+
+--------------------------------------------------------------------------------
+4. VIỆC CHUNG (cả hai cùng làm)
+--------------------------------------------------------------------------------
+  - 01-gioithieu.md, 02-cosolythuyet.md : mỗi người một phần
+  - 04-thietkethuchnghiem.md (phương pháp luận) : cùng viết — phần ăn điểm chính
+  - 05-ketqua.md -> 07-ketluan.md : ghép từ phần mỗi người; một người biên tập cuối
+  - Slide thuyết trình + demo : mỗi người trình bày phần mình
+  - Cross-check: mỗi người chạy lại 1 lần thí nghiệm của người kia để tăng độ tin cậy
+  - Gia cố tính hợp lệ dữ liệu: đồng bộ thời gian (NTP/chrony) cả 3 node;
+    tách luồng thu thập metrics khỏi đường đang đo
+
+--------------------------------------------------------------------------------
+5. QUY ƯỚC PHỐI HỢP
+--------------------------------------------------------------------------------
+  - Sở hữu theo file/thư mục, KHÔNG cùng sửa một file (tránh xung đột merge).
+  - Nhánh git: feat/tn1-tn2 (A), feat/tn3-tn4 (B); merge vào main.
+  - analysis/common/ do MỘT người viết trước để cả hai dùng chung.
+  - Chốt thống nhất TRƯỚC khi chạy: format dữ liệu, tên file, hàm thống kê chung.
+  - Ghi log mỗi lần chạy thí nghiệm: run nào, khi nào, kết quả ở đâu.
+  - IP/mật khẩu cluster: Người A là nguồn chuẩn duy nhất.
+
+--------------------------------------------------------------------------------
+6. TRẠNG THÁI DỰ ÁN (tính đến 2026-11-08)
+--------------------------------------------------------------------------------
+  [x] Hạ tầng AWS + Azure (terraform, deploy, verify)
+  [x] TICK stack + Kapacitor tasks (3 task enabled)
+  [x] WireGuard VPN (tunnel thông 2 chiều)
+  [x] Telegraf agent chạy trên VM-A + VM-B, dữ liệu về InfluxDB
+  [x] Health check 12/13 PASS (1 fail do NSG giới hạn 8888 cho IP admin — đúng thiết kế)
+  [ ] TN1, TN2, TN3, TN4 — chạy chính thức + lặp lại
+  [ ] Phân tích + biểu đồ
+  [ ] Báo cáo hoàn chỉnh + slide
+
+  THÔNG SỐ HIỆN TẠI (bàn giao cho nhóm):
+    - Azure Central IP : 20.255.72.0   |  InfluxDB pass: <lấy từ .env trên Central>
+    - AWS VM-B IP      : 18.143.221.246|  id: i-0b0a48b14c8d98c8f
+    - VPN              : 10.200.200.1 (VM-B) <-> 10.200.200.2 (VM-A)
+    - Chronograf       : http://20.255.72.0:8888   (chỉ mở cho IP admin)
+    - Lệnh bật lại VM  :
+        aws ec2 start-instances --region ap-southeast-1 --instance-ids i-0b0a48b14c8d98c8f
+        az vm start --resource-group NT531 --name hybrid-cloud-monitoring-central
+
+================================================================================
+                              HẾT
+================================================================================

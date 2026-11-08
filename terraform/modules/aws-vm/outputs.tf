@@ -39,5 +39,5 @@ output "ami_id" {
 
 output "ssh_command" {
   description = "Lenh SSH de ket noi"
-  value       = "ssh ${var.key_name}@${var.create_elastic_ip ? aws_eip.this[0].public_ip : aws_instance.this.public_ip}"
+  value       = "ssh ${var.ssh_user}@${var.create_elastic_ip ? aws_eip.this[0].public_ip : aws_instance.this.public_ip}"
 }

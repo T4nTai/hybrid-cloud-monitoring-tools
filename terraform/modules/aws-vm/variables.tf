@@ -53,6 +53,12 @@ variable "key_name" {
   type        = string
 }
 
+variable "ssh_user" {
+  description = "User SSH de dang nhap (Ubuntu AMI: ubuntu)"
+  type        = string
+  default     = "ubuntu"
+}
+
 variable "root_volume_size_gb" {
   description = "Dung luong root volume (GB)"
   type        = number

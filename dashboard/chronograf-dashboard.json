@@ -1,0 +1,134 @@
+{
+  "name": "Hybrid Cloud Monitoring - Network & System",
+  "templates": [],
+  "cells": [
+    {
+      "x": 0, "y": 0, "w": 6, "h": 4,
+      "name": "RTT trung binh (ping)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"average_response_ms\") AS \"RTT\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "ping",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"average_response_ms\") AS \"RTT\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 6, "y": 0, "w": 6, "h": 4,
+      "name": "Packet loss (%)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"percent_packet_loss\") AS \"loss\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "ping",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"percent_packet_loss\") AS \"loss\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 0, "y": 4, "w": 6, "h": 4,
+      "name": "Jitter (stddev RTT)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"standard_deviation_ms\") AS \"jitter\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "ping",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"standard_deviation_ms\") AS \"jitter\" FROM \"monitoring\".\"autogen\".\"ping\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\", \"url\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 6, "y": 4, "w": 6, "h": 4,
+      "name": "CPU usage (user / system)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"usage_user\") AS \"user\", mean(\"usage_system\") AS \"system\" FROM \"monitoring\".\"autogen\".\"cpu\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "cpu",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"usage_user\") AS \"user\", mean(\"usage_system\") AS \"system\" FROM \"monitoring\".\"autogen\".\"cpu\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 0, "y": 8, "w": 6, "h": 4,
+      "name": "Memory used (%)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"used_percent\") AS \"used\" FROM \"monitoring\".\"autogen\".\"mem\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "mem",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"used_percent\") AS \"used\" FROM \"monitoring\".\"autogen\".\"mem\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 6, "y": 8, "w": 6, "h": 4,
+      "name": "Disk used (%)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"used_percent\") AS \"used\" FROM \"monitoring\".\"autogen\".\"disk\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "disk",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"used_percent\") AS \"used\" FROM \"monitoring\".\"autogen\".\"disk\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 0, "y": 12, "w": 6, "h": 4,
+      "name": "Network traffic (bytes_recv)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"bytes_recv\") AS \"recv\" FROM \"monitoring\".\"autogen\".\"net\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "net",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"bytes_recv\") AS \"recv\" FROM \"monitoring\".\"autogen\".\"net\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    },
+    {
+      "x": 6, "y": 12, "w": 6, "h": 4,
+      "name": "TCP response time (net_response)",
+      "type": "line",
+      "queries": [
+        {
+          "query": "SELECT mean(\"response_time_ms\") AS \"tcp\" FROM \"monitoring\".\"autogen\".\"net_response\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+          "queryConfig": {
+            "database": "monitoring", "retentionPolicy": "autogen", "measurement": "net_response",
+            "areTagsAccepted": false,
+            "rawText": "SELECT mean(\"response_time_ms\") AS \"tcp\" FROM \"monitoring\".\"autogen\".\"net_response\" WHERE time > :dashboardTime: AND time < :upperDashboardTime: GROUP BY time(:interval:), \"host\" FILL(null)",
+            "range": null, "groupBy": { "time": "", "tags": [] }, "tags": {}, "fields": [], "shifts": []
+          }
+        }
+      ]
+    }
+  ]
+}
