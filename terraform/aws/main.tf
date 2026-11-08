@@ -156,3 +156,83 @@ module "vm_d" {
 
   depends_on = [aws_key_pair.useast]
 }
+
+# =============================================================================
+# VM-E — AWS ap-southeast-2 (Sydney) — probe khoảng cách (~7000 km tới HK)
+# =============================================================================
+resource "aws_key_pair" "sydney" {
+  count      = var.create_key_pair && var.enable_distance_vms ? 1 : 0
+  provider   = aws.sydney
+  key_name   = var.key_name
+  public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
+}
+
+module "vm_e" {
+  source = "../modules/aws-vm"
+  count  = var.enable_distance_vms ? 1 : 0
+
+  providers = {
+    aws = aws.sydney
+  }
+
+  name                = "vm-e"
+  project_name        = var.project_name
+  instance_type       = var.distance_instance_type
+  region              = var.sydney_region
+  key_name            = local.key_name_effective
+  vpc_id              = data.aws_vpc.sydney[0].id
+  subnet_id           = data.aws_subnets.sydney[0].ids[0]
+  root_volume_size_gb = var.root_volume_size_gb
+
+  create_elastic_ip     = true
+  allowed_ssh_cidrs     = local.admin_cidr
+  allowed_ingress_rules = []
+
+  tags = {
+    Name        = "vm-e"
+    Role        = "distance-probe"
+    Environment = var.environment
+  }
+
+  depends_on = [aws_key_pair.sydney]
+}
+
+# =============================================================================
+# VM-F — AWS eu-central-1 (Frankfurt) — probe khoảng cách (~9300 km tới HK)
+# =============================================================================
+resource "aws_key_pair" "frankfurt" {
+  count      = var.create_key_pair && var.enable_distance_vms ? 1 : 0
+  provider   = aws.frankfurt
+  key_name   = var.key_name
+  public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
+}
+
+module "vm_f" {
+  source = "../modules/aws-vm"
+  count  = var.enable_distance_vms ? 1 : 0
+
+  providers = {
+    aws = aws.frankfurt
+  }
+
+  name                = "vm-f"
+  project_name        = var.project_name
+  instance_type       = var.distance_instance_type
+  region              = var.frankfurt_region
+  key_name            = local.key_name_effective
+  vpc_id              = data.aws_vpc.frankfurt[0].id
+  subnet_id           = data.aws_subnets.frankfurt[0].ids[0]
+  root_volume_size_gb = var.root_volume_size_gb
+
+  create_elastic_ip     = true
+  allowed_ssh_cidrs     = local.admin_cidr
+  allowed_ingress_rules = []
+
+  tags = {
+    Name        = "vm-f"
+    Role        = "distance-probe"
+    Environment = var.environment
+  }
+
+  depends_on = [aws_key_pair.frankfurt]
+}

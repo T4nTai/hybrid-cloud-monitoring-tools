@@ -21,6 +21,18 @@ variable "useast_region" {
   default     = "us-east-1"
 }
 
+variable "sydney_region" {
+  description = "AWS region cho VM-E (Sydney, đo khoảng cách trung)"
+  type        = string
+  default     = "ap-southeast-2"
+}
+
+variable "frankfurt_region" {
+  description = "AWS region cho VM-F (Frankfurt, đo khoảng cách trung-xa)"
+  type        = string
+  default     = "eu-central-1"
+}
+
 # --- Project metadata ---
 variable "project_name" {
   description = "Tên dự án"

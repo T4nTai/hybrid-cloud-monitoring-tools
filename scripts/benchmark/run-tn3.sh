@@ -12,7 +12,7 @@ source "$(dirname "$0")/lib/common.sh"
 load_env
 require_cmd ssh
 
-REPEATS="${1:-$REPEATS}"
+REPEATS="${1:-${TN3_REPEATS:-5}}"   # TN3 mặc định 5 lần để tách overhead khỏi nhiễu
 OUT="$(tn_outdir tn3)"
 CONF=/etc/telegraf/telegraf.conf
 BACKUP=/tmp/telegraf.conf.tn3.bak

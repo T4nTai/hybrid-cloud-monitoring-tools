@@ -56,6 +56,16 @@ output "vmd_ssh_command" {
   value       = var.enable_distance_vms ? module.vm_d[0].ssh_command : null
 }
 
+# --- VM-E (Sydney) / VM-F (Frankfurt) ---
+output "vme_public_ip" {
+  description = "Public IP của VM-E (Sydney), null nếu không tạo"
+  value       = var.enable_distance_vms ? module.vm_e[0].elastic_ip : null
+}
+output "vmf_public_ip" {
+  description = "Public IP của VM-F (Frankfurt), null nếu không tạo"
+  value       = var.enable_distance_vms ? module.vm_f[0].elastic_ip : null
+}
+
 # --- Summary ---
 output "summary" {
   description = "Tóm tắt thông tin các VM"
@@ -66,11 +76,15 @@ output "summary" {
     VM-B (Singapore):  ${module.vm_b.elastic_ip != null ? module.vm_b.elastic_ip : module.vm_b.public_ip}
     VM-C (Tokyo):      ${var.enable_distance_vms ? (module.vm_c[0].elastic_ip != null ? module.vm_c[0].elastic_ip : module.vm_c[0].public_ip) : "DISABLED"}
     VM-D (US-East):    ${var.enable_distance_vms ? (module.vm_d[0].elastic_ip != null ? module.vm_d[0].elastic_ip : module.vm_d[0].public_ip) : "DISABLED"}
+    VM-E (Sydney):     ${var.enable_distance_vms ? (module.vm_e[0].elastic_ip != null ? module.vm_e[0].elastic_ip : module.vm_e[0].public_ip) : "DISABLED"}
+    VM-F (Frankfurt):  ${var.enable_distance_vms ? (module.vm_f[0].elastic_ip != null ? module.vm_f[0].elastic_ip : module.vm_f[0].public_ip) : "DISABLED"}
 
     SSH Commands:
     - VM-B: ${module.vm_b.ssh_command}
     - VM-C: ${var.enable_distance_vms ? module.vm_c[0].ssh_command : "N/A"}
     - VM-D: ${var.enable_distance_vms ? module.vm_d[0].ssh_command : "N/A"}
+    - VM-E: ${var.enable_distance_vms ? module.vm_e[0].ssh_command : "N/A"}
+    - VM-F: ${var.enable_distance_vms ? module.vm_f[0].ssh_command : "N/A"}
 
     NOTE: Central (InfluxDB + Chronograf) nằm ở Azure.
     Xem terraform/azure/ để triển khai Central.

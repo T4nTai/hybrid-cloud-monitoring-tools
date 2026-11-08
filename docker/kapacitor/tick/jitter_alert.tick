@@ -1,45 +1,66 @@
 // =============================================================================
-// TICKscript: Jitter Alert
-// Kịch bản: Cảnh báo khi jitter tăng đột biến so với baseline
-//   WARNING  : jitter > 10 ms  (đường truyền bắt đầu không ổn định)
-//   CRITICAL : jitter > 25 ms  (không phù hợp cho ứng dụng thời gian thực)
-//
-// Nguồn dữ liệu: measurement `ping`, field `standard_deviation_ms`
-//
-// Bối cảnh: jitter baseline on-prem→Singapore qua WireGuard ~1-3 ms.
-// Nếu jitter vọt lên > 10 ms, khả năng cao đường truyền ISP đang tắc nghẽn
-// hoặc WireGuard tunnel đang có vấn đề (mất gói, retransmit liên tục).
+// Jitter Alert — định dạng tương thích Chronograf (editable Alert Rule)
+// WARNING > 25 ms, CRITICAL > 50 ms  (window 2m, đã tinh chỉnh theo baseline)
 // =============================================================================
+var db = 'monitoring'
+var rp = 'autogen'
+var measurement = 'ping'
+var groupBy = ['host', 'url']
+var whereFilter = lambda: TRUE
+var name = 'Jitter Alert'
+var idVar = name + ':{{.Group}}'
+var message = '[{{ .Level }}] Jitter {{ index .Tags "host" }} -> {{ index .Tags "url" }}: {{ .Fields.jitter_mean | printf "%.2f" }} ms (WARN>10, CRIT>25)'
+var idTag = 'alertID'
+var levelTag = 'level'
+var messageField = 'message'
+var durationField = 'duration'
+var outputDB = 'chronograf'
+var outputRP = 'autogen'
+var outputMeasurement = 'alerts'
+var triggerType = 'threshold'
+var details = 'Jitter bat thuong'
+var warnThreshold = 25.0
+var critThreshold = 50.0
 
-stream
+var data = stream
     |from()
-        .database('monitoring')
-        .retentionPolicy('autogen')
-        .measurement('ping')
-        .groupBy('host', 'url')
-
-    // Window ngắn hơn (1 phút) vì jitter cần phát hiện nhanh
+        .database(db)
+        .retentionPolicy(rp)
+        .measurement(measurement)
+        .groupBy(groupBy)
+        .where(whereFilter)
     |window()
-        .period(1m)
+        .period(2m)
         .every(30s)
-
     |mean('standard_deviation_ms')
         .as('jitter_mean')
 
+var trigger = data
     |alert()
-        .id('jitter-alert/{{ index .Tags "host" }}-to-{{ index .Tags "url" }}')
-        .message(
-            '[{{ .Level }}] Jitter bất thường {{ index .Tags "host" }} → {{ index .Tags "url" }}: ' +
-            '{{ .Fields.jitter_mean | printf "%.2f" }} ms ' +
-            '(WARNING > 10ms, CRITICAL > 25ms). ' +
-            'Kiểm tra: tắc nghẽn ISP, WireGuard tunnel, CPU tải cao.'
-        )
-        .warn(lambda: "jitter_mean" > 10.0)
-        .crit(lambda: "jitter_mean" > 25.0)
+        .id(idVar)
+        .message(message)
+        .details(details)
+        .idTag(idTag)
+        .levelTag(levelTag)
+        .messageField(messageField)
+        .durationField(durationField)
+        .warn(lambda: "jitter_mean" > warnThreshold)
+        .crit(lambda: "jitter_mean" > critThreshold)
         .stateChangesOnly()
+        .slack()
 
-        |influxDBOut()
-            .database('monitoring')
-            .retentionPolicy('autogen')
-            .measurement('alerts_jitter')
-            .tag('alert_type', 'jitter')
+trigger
+    |influxDBOut()
+        .database('monitoring')
+        .retentionPolicy('autogen')
+        .measurement('alerts_jitter')
+        .tag('alert_type', 'jitter')
+
+trigger
+    |influxDBOut()
+        .create()
+        .database(outputDB)
+        .retentionPolicy(outputRP)
+        .measurement(outputMeasurement)
+        .tag('alertName', name)
+        .tag('triggerType', triggerType)

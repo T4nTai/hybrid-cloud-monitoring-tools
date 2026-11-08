@@ -103,3 +103,61 @@ data "aws_subnets" "useast" {
     values = [data.aws_vpc.useast[0].id]
   }
 }
+
+# Provider cho VM-E (Sydney)
+provider "aws" {
+  alias  = "sydney"
+  region = var.sydney_region
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Owner       = var.owner
+      ManagedBy   = "terraform"
+      Component   = "hybrid-cloud-monitoring-distance"
+    }
+  }
+}
+
+# Provider cho VM-F (Frankfurt)
+provider "aws" {
+  alias  = "frankfurt"
+  region = var.frankfurt_region
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Owner       = var.owner
+      ManagedBy   = "terraform"
+      Component   = "hybrid-cloud-monitoring-distance"
+    }
+  }
+}
+
+data "aws_vpc" "sydney" {
+  count    = var.use_default_vpc && var.enable_distance_vms ? 1 : 0
+  default  = true
+  provider = aws.sydney
+}
+data "aws_subnets" "sydney" {
+  count    = var.use_default_vpc && var.enable_distance_vms ? 1 : 0
+  provider = aws.sydney
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.sydney[0].id]
+  }
+}
+
+data "aws_vpc" "frankfurt" {
+  count    = var.use_default_vpc && var.enable_distance_vms ? 1 : 0
+  default  = true
+  provider = aws.frankfurt
+}
+data "aws_subnets" "frankfurt" {
+  count    = var.use_default_vpc && var.enable_distance_vms ? 1 : 0
+  provider = aws.frankfurt
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.frankfurt[0].id]
+  }
+}

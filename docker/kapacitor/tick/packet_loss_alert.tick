@@ -1,41 +1,66 @@
 // =============================================================================
-// TICKscript: Packet Loss Alert
-// Kịch bản: Cảnh báo khi tỷ lệ mất gói vượt ngưỡng
-//   WARNING  : loss > 2%  (bắt đầu ảnh hưởng throughput TCP)
-//   CRITICAL : loss > 5%  (đường truyền không ổn định, cần kiểm tra ISP/VPN)
-//
-// Nguồn dữ liệu: measurement `ping`, field `percent_packet_loss`
+// Packet Loss Alert — định dạng tương thích Chronograf (editable Alert Rule)
+// WARNING > 8%, CRITICAL > 15%  (đã tinh chỉnh theo baseline: on-prem ICMP loss ~1.8%)
 // =============================================================================
+var db = 'monitoring'
+var rp = 'autogen'
+var measurement = 'ping'
+var groupBy = ['host', 'url']
+var whereFilter = lambda: TRUE
+var name = 'Packet Loss Alert'
+var idVar = name + ':{{.Group}}'
+var message = '[{{ .Level }}] Packet loss {{ index .Tags "host" }} -> {{ index .Tags "url" }}: {{ .Fields.loss_mean | printf "%.2f" }}% (WARN>2%, CRIT>5%)'
+var idTag = 'alertID'
+var levelTag = 'level'
+var messageField = 'message'
+var durationField = 'duration'
+var outputDB = 'chronograf'
+var outputRP = 'autogen'
+var outputMeasurement = 'alerts'
+var triggerType = 'threshold'
+var details = 'Mat goi cao'
+var warnThreshold = 8.0
+var critThreshold = 15.0
 
-stream
+var data = stream
     |from()
-        .database('monitoring')
-        .retentionPolicy('autogen')
-        .measurement('ping')
-        .groupBy('host', 'url')
-
-    // Trung bình trượt 3 phút → loss thường xuất hiện theo đợt ngắn,
-    // window rộng hơn giúp tránh false alarm từ 1-2 gói mất đơn lẻ
+        .database(db)
+        .retentionPolicy(rp)
+        .measurement(measurement)
+        .groupBy(groupBy)
+        .where(whereFilter)
     |window()
         .period(3m)
         .every(30s)
-
     |mean('percent_packet_loss')
         .as('loss_mean')
 
+var trigger = data
     |alert()
-        .id('packet-loss/{{ index .Tags "host" }}-to-{{ index .Tags "url" }}')
-        .message(
-            '[{{ .Level }}] Packet loss {{ index .Tags "host" }} → {{ index .Tags "url" }}: ' +
-            '{{ .Fields.loss_mean | printf "%.2f" }}% ' +
-            '(WARNING > 2%, CRITICAL > 5%)'
-        )
-        .warn(lambda: "loss_mean" > 2.0)
-        .crit(lambda: "loss_mean" > 5.0)
+        .id(idVar)
+        .message(message)
+        .details(details)
+        .idTag(idTag)
+        .levelTag(levelTag)
+        .messageField(messageField)
+        .durationField(durationField)
+        .warn(lambda: "loss_mean" > warnThreshold)
+        .crit(lambda: "loss_mean" > critThreshold)
         .stateChangesOnly()
+        .slack()
 
-        |influxDBOut()
-            .database('monitoring')
-            .retentionPolicy('autogen')
-            .measurement('alerts_packet_loss')
-            .tag('alert_type', 'packet_loss')
+trigger
+    |influxDBOut()
+        .database('monitoring')
+        .retentionPolicy('autogen')
+        .measurement('alerts_packet_loss')
+        .tag('alert_type', 'packet_loss')
+
+trigger
+    |influxDBOut()
+        .create()
+        .database(outputDB)
+        .retentionPolicy(outputRP)
+        .measurement(outputMeasurement)
+        .tag('alertName', name)
+        .tag('triggerType', triggerType)

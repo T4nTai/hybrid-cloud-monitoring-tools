@@ -1,0 +1,8 @@
+# name<TAB>distance_km<TAB>ssh_user<TAB>ssh_host<TAB>ssh_key
+# Khoảng cách great-circle ước lượng tới Azure Central (eastasia/Hong Kong).
+vm-a	1500	ubuntu	localhost	~/.ssh/id_rsa
+vm-b	2570	ubuntu	18.143.221.246	terraform/keys/vm-b-aws-key
+vm-c	2890	ubuntu	13.159.60.227	terraform/keys/vm-b-aws-key
+vm-d	13000	ubuntu	44.215.21.110	terraform/keys/vm-b-aws-key
+vm-e	7300	ubuntu	16.178.38.123	terraform/keys/vm-b-aws-key
+vm-f	9300	ubuntu	18.159.239.120	terraform/keys/vm-b-aws-key

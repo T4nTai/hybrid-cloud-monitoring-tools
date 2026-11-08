@@ -38,12 +38,16 @@ ssh_vma "sudo mtr -rwc 20 --no-dns $VPN_SERVER_IP" >"$OUT/mtr-vma-vmb-vpn.txt" 2
 ssh_vma "sudo mtr -rwc 20 --no-dns $CENTRAL_IP"    >"$OUT/mtr-vma-central.txt" 2>&1 || warn "mtr p2 lỗi"
 ssh_vmb "sudo mtr -rwc 20 --no-dns $CENTRAL_IP"    >"$OUT/mtr-vmb-central.txt" 2>&1 || warn "mtr p3 lỗi"
 
+log "[P4-TCP] TCP connect time vm-a -> vm-b:22 (public, thay cho ICMP)"
+TCPCMD="for i in \$(seq 1 20); do s=\$(date +%s%N); { exec 3<>/dev/tcp/$VMB_PUBLIC_IP/22; } 2>/dev/null; e=\$(date +%s%N); echo \$(( (e-s)/1000000 )); exec 3<&- 2>/dev/null; sleep 0.2; done"
+do_repeat "$OUT" "p4-tcp-vma-vmb" "$REPEATS" ssh_vma "$TCPCMD"
+
 log "[iperf3] Server trên VM-B, client từ VM-A qua VPN"
-ssh_vmb "pkill -f 'iperf3 -s' 2>/dev/null; sleep 1; nohup iperf3 -s >/tmp/iperf3srv.log 2>&1 & sleep 1; pgrep -f 'iperf3 -s' >/dev/null && echo SERVER_UP || echo SERVER_FAIL"
+ssh_vmb "sudo pkill -9 -x iperf3 2>/dev/null; sleep 1; nohup iperf3 -s -D >/tmp/iperf3srv.log 2>&1; sleep 1; ss -tlnp 2>/dev/null | grep -q ':5201' && echo SERVER_UP || echo SERVER_FAIL"
 for k in $(seq 1 "$REPEATS"); do
   ssh_vma "iperf3 -c $VPN_SERVER_IP -t 30 -J" >"$OUT/iperf3-vpn-run$k.json" 2>&1 || warn "iperf3 run $k lỗi"
 done
-ssh_vmb "pkill -f 'iperf3 -s' 2>/dev/null; true"
+ssh_vmb "sudo pkill -9 -x iperf3 2>/dev/null; true"
 
 log "=== TN1 xong. Dữ liệu thô: $OUT ==="
 log "Phân tích:  python analysis/tn1_analysis.py"

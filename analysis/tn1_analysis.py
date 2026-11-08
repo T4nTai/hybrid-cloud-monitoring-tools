@@ -74,6 +74,19 @@ def main():
         pd.DataFrame({"run": range(1, len(mbps) + 1), "mbps": mbps}).to_csv(
             dst / "tn1_iperf.csv", index=False)
 
+    # P4 TCP connect time (thay cho ICMP tới EIP)
+    tcp_vals = []
+    for tf in sorted(glob.glob(str(src / "p4-tcp-vma-vmb-run*.txt"))):
+        for tok in Path(tf).read_text(errors="replace").split():
+            try:
+                tcp_vals.append(float(tok))
+            except ValueError:
+                pass
+    if tcp_vals:
+        a = np.asarray(tcp_vals)
+        print(f"\nP4 TCP connect (vm-a->vm-b:22): mean={a.mean():.2f}ms "
+              f"p50={np.percentile(a, 50):.2f} p95={np.percentile(a, 95):.2f} n={a.size}")
+
     # --- Self-interference: Telegraf ON vs OFF ---
     def _mean(pattern):
         vals = []

@@ -1,0 +1,11 @@
+# Danh sách probe cho TN2 (copy thành configs/probes.tsv và điền thật).
+# Mỗi dòng TAB-separated: name <TAB> distance_km <TAB> ssh_user <TAB> ssh_host <TAB> ssh_key
+# distance_km: khoảng cách (great-circle) tới Azure Central (eastasia/Hong Kong).
+#
+# Mặc định (chưa có file này) run-tn2.sh dùng vm-a và vm-b.
+vm-a	1500	ubuntu	vm-a	~/.ssh/id_rsa
+vm-b	2570	ubuntu	18.143.221.246	terraform/keys/vm-b-aws-key
+# Bật khi có VM-C (Tokyo) / VM-D (US-East) từ terraform (enable_distance_vms=true):
+# vm-c	2890	ubuntu	<IP-VM-C>	terraform/keys/vm-b-aws-key
+# vm-d	13000	ubuntu	<IP-VM-D>	terraform/keys/vm-b-aws-key
+# Có thể thêm probe ở Sydney (~7000), Frankfurt (~9300), ... nếu có máy.

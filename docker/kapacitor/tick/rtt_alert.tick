@@ -1,46 +1,66 @@
 // =============================================================================
-// TICKscript: RTT Alert
-// Kịch bản: Cảnh báo khi RTT trung bình (rolling 2 phút) vượt ngưỡng
-//   WARNING  : RTT > 80 ms  (đường truyền bắt đầu chậm, ảnh hưởng API calls)
-//   CRITICAL : RTT > 150 ms (đường truyền quá chậm, cần kiểm tra ngay)
-//
-// Nguồn dữ liệu: measurement `ping`, field `average_response_ms`
-// Agent nào trigger: vm-a (on-prem→AWS/Azure) hoặc vm-b (AWS→Azure)
+// RTT Alert — định dạng tương thích Chronograf (editable Alert Rule)
+// WARNING > 80 ms, CRITICAL > 150 ms  (window 2m; baseline on-prem med ~35ms)
 // =============================================================================
+var db = 'monitoring'
+var rp = 'autogen'
+var measurement = 'ping'
+var groupBy = ['host', 'url']
+var whereFilter = lambda: TRUE
+var name = 'RTT Alert'
+var idVar = name + ':{{.Group}}'
+var message = '[{{ .Level }}] RTT {{ index .Tags "host" }} -> {{ index .Tags "url" }}: {{ .Fields.rtt_mean | printf "%.1f" }} ms (WARN>80, CRIT>150)'
+var idTag = 'alertID'
+var levelTag = 'level'
+var messageField = 'message'
+var durationField = 'duration'
+var outputDB = 'chronograf'
+var outputRP = 'autogen'
+var outputMeasurement = 'alerts'
+var triggerType = 'threshold'
+var details = 'RTT cao bat thuong'
+var warnThreshold = 80.0
+var critThreshold = 150.0
 
-// Đọc luồng dữ liệu từ InfluxDB, measurement `ping`
-stream
+var data = stream
     |from()
-        .database('monitoring')
-        .retentionPolicy('autogen')
-        .measurement('ping')
-        .groupBy('host', 'url')   // nhóm theo node (vm-a/vm-b) và target ping
-
-    // Trung bình trượt 2 phút → giảm nhiễu từ spike đơn lẻ
+        .database(db)
+        .retentionPolicy(rp)
+        .measurement(measurement)
+        .groupBy(groupBy)
+        .where(whereFilter)
     |window()
         .period(2m)
         .every(30s)
-
     |mean('average_response_ms')
         .as('rtt_mean')
 
-    // Đánh giá ngưỡng cảnh báo
+var trigger = data
     |alert()
-        .id('rtt-alert/{{ index .Tags "host" }}-to-{{ index .Tags "url" }}')
-        .message(
-            '[{{ .Level }}] RTT {{ index .Tags "host" }} → {{ index .Tags "url" }}: ' +
-            '{{ .Fields.rtt_mean | printf "%.1f" }} ms ' +
-            '(WARNING > 80ms, CRITICAL > 150ms)'
-        )
-        .warn(lambda: "rtt_mean" > 80.0)
-        .crit(lambda: "rtt_mean" > 150.0)
-
-        // Chỉ cảnh báo khi trạng thái THAY ĐỔI (tránh spam)
+        .id(idVar)
+        .message(message)
+        .details(details)
+        .idTag(idTag)
+        .levelTag(levelTag)
+        .messageField(messageField)
+        .durationField(durationField)
+        .warn(lambda: "rtt_mean" > warnThreshold)
+        .crit(lambda: "rtt_mean" > critThreshold)
         .stateChangesOnly()
+        .slack()
 
-        // Ghi alert vào InfluxDB (hiển thị trên Chronograf Alert History)
-        |influxDBOut()
-            .database('monitoring')
-            .retentionPolicy('autogen')
-            .measurement('alerts_rtt')
-            .tag('alert_type', 'rtt')
+trigger
+    |influxDBOut()
+        .database('monitoring')
+        .retentionPolicy('autogen')
+        .measurement('alerts_rtt')
+        .tag('alert_type', 'rtt')
+
+trigger
+    |influxDBOut()
+        .create()
+        .database(outputDB)
+        .retentionPolicy(outputRP)
+        .measurement(outputMeasurement)
+        .tag('alertName', name)
+        .tag('triggerType', triggerType)
