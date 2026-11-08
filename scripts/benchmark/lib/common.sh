@@ -39,7 +39,16 @@ _resolve_key() {
 
 SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=12 -o LogLevel=ERROR)
 
-ssh_vma()     { ssh -i "$(_resolve_key "${VMA_SSH_KEY:-$HOME/.ssh/id_rsa}")" "${SSH_OPTS[@]}" "${VMA_USER:-ubuntu}@${VMA_HOST}" "$@"; }
+# Cho phép chạy "tại chỗ" nếu VMA_HOST là local (chạy script ngay trên vm-a)
+_is_local_host() { case "${1:-}" in ""|localhost|127.0.0.1|::1|self|.) return 0;; *) return 1;; esac; }
+
+ssh_vma() {
+  if _is_local_host "${VMA_HOST:-}"; then
+    bash -c "$*"
+  else
+    ssh -i "$(_resolve_key "${VMA_SSH_KEY:-$HOME/.ssh/id_rsa}")" "${SSH_OPTS[@]}" "${VMA_USER:-ubuntu}@${VMA_HOST}" "$@"
+  fi
+}
 ssh_vmb()     { ssh -i "$(_resolve_key "${VMB_SSH_KEY}")" "${SSH_OPTS[@]}" "${VMB_USER:-ubuntu}@${VMB_PUBLIC_IP}" "$@"; }
 ssh_central() { ssh -i "$(_resolve_key "${CENTRAL_SSH_KEY}")" "${SSH_OPTS[@]}" "${CENTRAL_USER:-azureuser}@${CENTRAL_IP}" "$@"; }
 

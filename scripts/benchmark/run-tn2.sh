@@ -30,8 +30,12 @@ probe_ping() {
   local k
   for k in $(seq 1 "$REPEATS"); do
     local f="$OUT/${name}-run${k}.txt"
-    ssh -i "$keypath" "${SSH_OPTS[@]}" "${user}@${host}" "$BASE_PING $CENTRAL_IP" >"$f" 2>&1 \
-      || warn "probe $name run $k lỗi (xem $f)"
+    if _is_local_host "$host"; then
+      bash -c "$BASE_PING $CENTRAL_IP" >"$f" 2>&1 || warn "probe $name run $k lỗi (xem $f)"
+    else
+      ssh -i "$keypath" "${SSH_OPTS[@]}" "${user}@${host}" "$BASE_PING $CENTRAL_IP" >"$f" 2>&1 \
+        || warn "probe $name run $k lỗi (xem $f)"
+    fi
   done
   printf '%s\t%s\t%s\n' "$name" "$dist" "$OUT/${name}-run*.txt" >>"$META"
 }
